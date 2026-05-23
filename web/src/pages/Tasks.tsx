@@ -43,6 +43,8 @@ const Tasks: React.FC = () => {
   // 分组相关状态
   const [groups, setGroups] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<string>('all');
+  const [searchInput, setSearchInput] = useState<string>('');
+  const [searchKeyword, setSearchKeyword] = useState<string>('');
   const [groupManageVisible, setGroupManageVisible] = useState(false);
   const [groupModalVisible, setGroupModalVisible] = useState(false);
   const [editingGroup, setEditingGroup] = useState<any>(null);
@@ -146,6 +148,11 @@ const Tasks: React.FC = () => {
     loadTasks();
   }, [activeTab]);
 
+  // 搜索关键字变化时重新加载
+  useEffect(() => {
+    loadTasks();
+  }, [searchKeyword]);
+
   const loadGroups = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -161,14 +168,16 @@ const Tasks: React.FC = () => {
   const loadTasks = async () => {
     setLoading(true);
     try {
+      const search = searchKeyword.trim() || undefined;
       if (activeTab === 'all') {
-        const res: any = await taskApi.list();
+        const res: any = await taskApi.list(search ? { search } : undefined);
         setTasks(res);
       } else {
         const groupId = parseInt(activeTab);
         const token = localStorage.getItem('token');
         const res = await axios.get(`/api/task-groups/${groupId}/tasks`, {
           headers: { Authorization: `Bearer ${token}` },
+          params: search ? { search } : undefined,
         });
         setTasks(res.data);
       }
@@ -668,6 +677,21 @@ const Tasks: React.FC = () => {
   return (
     <>
       <Card title="任务管理">
+        <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+          <Input.Search
+            allowClear
+            placeholder="搜索任务名称或命令，回车搜索"
+            value={searchInput}
+            onChange={(v) => {
+              setSearchInput(v);
+              if (v === '' && searchKeyword !== '') {
+                setSearchKeyword('');
+              }
+            }}
+            onSearch={(v) => setSearchKeyword(v.trim())}
+            style={{ width: isMobile ? 200 : 280 }}
+          />
+        </div>
         <Tabs
           activeTab={activeTab}
           onChange={setActiveTab}

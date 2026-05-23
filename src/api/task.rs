@@ -18,6 +18,8 @@ use std::sync::Arc;
 pub struct ListTasksQuery {
     /// 字段过滤：simple=只返回id和name，默认返回全部字段
     fields: Option<String>,
+    /// 关键字搜索（按名称或命令模糊匹配）
+    search: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -33,7 +35,7 @@ pub async fn list_tasks(
 ) -> Result<impl IntoResponse, StatusCode> {
     let tasks = state
         .task_service
-        .list()
+        .list_with_search(query.search.as_deref())
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 

@@ -22,6 +22,29 @@ impl TaskService {
         Ok(tasks)
     }
 
+    pub async fn list_with_search(&self, search: Option<&str>) -> Result<Vec<Task>> {
+        let pool = self.pool.read().await;
+        match search.map(|s| s.trim()).filter(|s| !s.is_empty()) {
+            Some(kw) => {
+                let pattern = format!("%{}%", kw.to_lowercase());
+                let tasks = sqlx::query_as::<_, Task>(
+                    "SELECT * FROM tasks WHERE LOWER(name) LIKE ? OR LOWER(command) LIKE ? ORDER BY id DESC",
+                )
+                .bind(&pattern)
+                .bind(&pattern)
+                .fetch_all(&*pool)
+                .await?;
+                Ok(tasks)
+            }
+            None => {
+                let tasks = sqlx::query_as::<_, Task>("SELECT * FROM tasks ORDER BY id DESC")
+                    .fetch_all(&*pool)
+                    .await?;
+                Ok(tasks)
+            }
+        }
+    }
+
     pub async fn get(&self, id: i64) -> Result<Option<Task>> {
         let pool = self.pool.read().await;
         let task = sqlx::query_as::<_, Task>("SELECT * FROM tasks WHERE id = ?")
@@ -194,13 +217,27 @@ impl TaskService {
         Ok(tasks)
     }
 
-    pub async fn list_by_group(&self, group_id: i64) -> Result<Vec<Task>> {
+    pub async fn list_by_group(&self, group_id: i64, search: Option<&str>) -> Result<Vec<Task>> {
         let pool = self.pool.read().await;
-        let tasks = sqlx::query_as::<_, Task>("SELECT * FROM tasks WHERE group_id = ? ORDER BY id DESC")
+        let kw = search.map(|s| s.trim()).filter(|s| !s.is_empty());
+        if let Some(kw) = kw {
+            let pattern = format!("%{}%", kw.to_lowercase());
+            let tasks = sqlx::query_as::<_, Task>(
+                "SELECT * FROM tasks WHERE group_id = ? AND (LOWER(name) LIKE ? OR LOWER(command) LIKE ?) ORDER BY id DESC",
+            )
             .bind(group_id)
+            .bind(&pattern)
+            .bind(&pattern)
             .fetch_all(&*pool)
             .await?;
-        Ok(tasks)
+            Ok(tasks)
+        } else {
+            let tasks = sqlx::query_as::<_, Task>("SELECT * FROM tasks WHERE group_id = ? ORDER BY id DESC")
+                .bind(group_id)
+                .fetch_all(&*pool)
+                .await?;
+            Ok(tasks)
+        }
     }
 
     pub async fn update_run_info(&self, id: i64, last_run_at: chrono::DateTime<chrono::Utc>, duration_ms: i64) -> Result<()> {

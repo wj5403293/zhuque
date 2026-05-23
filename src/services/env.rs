@@ -24,6 +24,31 @@ impl EnvService {
         Ok(vars)
     }
 
+    /// 获取环境变量列表（支持关键字搜索）
+    pub async fn list_with_search(&self, search: Option<&str>) -> Result<Vec<EnvVar>> {
+        let pool = self.pool.read().await;
+        match search.map(|s| s.trim()).filter(|s| !s.is_empty()) {
+            Some(kw) => {
+                let pattern = format!("%{}%", kw.to_lowercase());
+                let vars = sqlx::query_as::<_, EnvVar>(
+                    "SELECT * FROM env_vars WHERE LOWER(key) LIKE ? OR LOWER(value) LIKE ? OR LOWER(COALESCE(remark,'')) LIKE ? ORDER BY key ASC",
+                )
+                .bind(&pattern)
+                .bind(&pattern)
+                .bind(&pattern)
+                .fetch_all(&*pool)
+                .await?;
+                Ok(vars)
+            }
+            None => {
+                let vars = sqlx::query_as::<_, EnvVar>("SELECT * FROM env_vars ORDER BY key ASC")
+                    .fetch_all(&*pool)
+                    .await?;
+                Ok(vars)
+            }
+        }
+    }
+
     /// 获取所有环境变量作为HashMap（只返回启用的）
     pub async fn get_all_as_map(&self) -> Result<HashMap<String, String>> {
         let vars = self.list().await?;

@@ -1,13 +1,19 @@
 use crate::models::{CreateTaskGroup, UpdateTaskGroup};
 use crate::AppState;
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
 };
+use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
+
+#[derive(Debug, Deserialize)]
+pub struct GroupTasksQuery {
+    search: Option<String>,
+}
 
 pub async fn list_groups(
     State(state): State<Arc<AppState>>,
@@ -73,10 +79,11 @@ pub async fn delete_group(
 pub async fn get_group_tasks(
     State(state): State<Arc<AppState>>,
     Path(group_id): Path<i64>,
+    Query(query): Query<GroupTasksQuery>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let tasks = state
         .task_service
-        .list_by_group(group_id)
+        .list_by_group(group_id, query.search.as_deref())
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(tasks))

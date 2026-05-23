@@ -1,20 +1,28 @@
 use crate::api::AppState;
 use crate::models::{CreateEnvVar, UpdateEnvVar};
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
 };
+use serde::Deserialize;
 use std::sync::Arc;
+
+#[derive(Debug, Deserialize)]
+pub struct ListEnvQuery {
+    /// 关键字搜索（按 key/value/remark 模糊匹配）
+    search: Option<String>,
+}
 
 /// 获取环境变量列表
 pub async fn list_env_vars(
     State(state): State<Arc<AppState>>,
+    Query(query): Query<ListEnvQuery>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let vars = state
         .env_service
-        .list()
+        .list_with_search(query.search.as_deref())
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 

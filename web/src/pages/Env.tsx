@@ -22,16 +22,19 @@ const Env: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [visible, setVisible] = useState(false);
   const [editingEnv, setEditingEnv] = useState<EnvVar | null>(null);
+  const [searchInput, setSearchInput] = useState('');
+  const [searchKeyword, setSearchKeyword] = useState('');
   const [form] = Form.useForm();
 
   useEffect(() => {
     loadEnvVars();
-  }, []);
+  }, [searchKeyword]);
 
   const loadEnvVars = async () => {
     setLoading(true);
     try {
-      const res: any = await envApi.list();
+      const search = searchKeyword.trim() || undefined;
+      const res: any = await envApi.list(search ? { search } : undefined);
       setEnvVars(res);
     } finally {
       setLoading(false);
@@ -99,6 +102,7 @@ const Env: React.FC = () => {
     {
       title: '描述',
       dataIndex: 'remark',
+      width: 100,
       ellipsis: true,
     },
     {
@@ -129,7 +133,6 @@ const Env: React.FC = () => {
     {
       title: '操作',
       width: 150,
-      fixed: 'right' as const,
       render: (_: any, record: EnvVar) => (
         <Space>
           <Button
@@ -154,14 +157,33 @@ const Env: React.FC = () => {
   ];
 
   return (
-    <Card
-      title="环境变量"
-      extra={
+    <Card title="环境变量">
+      <div
+        style={{
+          marginBottom: 16,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-end',
+          gap: 12,
+        }}
+      >
         <Button type="primary" icon={<IconPlus />} onClick={handleAdd}>
           新建变量
         </Button>
-      }
-    >
+        <Input.Search
+          allowClear
+          placeholder="搜索变量名 / 值 / 描述，回车搜索"
+          value={searchInput}
+          onChange={(v) => {
+            setSearchInput(v);
+            if (v === '' && searchKeyword !== '') {
+              setSearchKeyword('');
+            }
+          }}
+          onSearch={(v) => setSearchKeyword(v.trim())}
+          style={{ width: 260, maxWidth: '100%' }}
+        />
+      </div>
       <Table
         columns={columns}
         data={envVars}

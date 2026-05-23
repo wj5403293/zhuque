@@ -283,6 +283,16 @@ impl DependenceService {
         Ok(result.rows_affected() > 0)
     }
 
+    /// 软删除依赖（只删除数据库记录，不卸载系统依赖）
+    pub async fn soft_delete(&self, id: i64) -> Result<bool> {
+        let result = sqlx::query("DELETE FROM dependences WHERE id = ?")
+            .bind(id)
+            .execute(&*self.pool.read().await)
+            .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
     /// 重新安装依赖
     pub async fn reinstall(&self, id: i64) -> Result<()> {
         if let Some(dep) = self.get(id).await? {

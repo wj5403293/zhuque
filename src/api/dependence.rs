@@ -118,6 +118,24 @@ pub async fn delete_dependence(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// 软删除依赖（只删除数据库记录，不卸载系统依赖）
+pub async fn soft_delete_dependence(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let deleted = state
+        .dependence_service
+        .soft_delete(id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    if !deleted {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// 重新安装依赖
 pub async fn reinstall_dependence(
     State(state): State<Arc<AppState>>,

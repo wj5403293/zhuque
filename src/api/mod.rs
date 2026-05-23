@@ -211,6 +211,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/dependences/:id/reinstall",
             post(dependence::reinstall_dependence),
         )
+        .route(
+            "/api/dependences/:id/soft-delete",
+            post(dependence::soft_delete_dependence),
+        )
         // 任务分组管理
         .route(
             "/api/task-groups",

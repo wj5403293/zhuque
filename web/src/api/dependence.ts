@@ -9,4 +9,5 @@ export const dependenceApi = {
   update: (id: number, data: Partial<Dependence>) => request.put(`/dependences/${id}`, data),
   delete: (id: number) => request.delete(`/dependences/${id}`),
   reinstall: (id: number) => request.post(`/dependences/${id}/reinstall`),
+  softDelete: (id: number) => request.post(`/dependences/${id}/soft-delete`),
 };

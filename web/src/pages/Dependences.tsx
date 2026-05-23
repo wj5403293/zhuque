@@ -14,7 +14,7 @@ import {
   Spin,
   Tabs,
 } from '@arco-design/web-react';
-import { IconPlus, IconRefresh, IconDelete, IconFile } from '@arco-design/web-react/icon';
+import { IconPlus, IconRefresh, IconDelete, IconFile, IconMinusCircle } from '@arco-design/web-react/icon';
 import { dependenceApi } from '@/api/dependence';
 import type { Dependence } from '@/types';
 
@@ -31,6 +31,7 @@ const Dependences: React.FC = () => {
   const [logLoading, setLogLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('python');
   const [form] = Form.useForm();
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768);
 
   useEffect(() => {
     loadDependences(true);
@@ -39,6 +40,12 @@ const Dependences: React.FC = () => {
       loadDependences(false);
     }, 5000);
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
   }, []);
 
   const loadDependences = async (showLoading: boolean = true) => {
@@ -113,6 +120,16 @@ const Dependences: React.FC = () => {
     }
   };
 
+  const handleSoftDelete = async (id: number) => {
+    try {
+      await dependenceApi.softDelete(id);
+      Message.success('已从数据库移除');
+      loadDependences(false);
+    } catch (error: any) {
+      Message.error(error.response?.data?.error || '操作失败');
+    }
+  };
+
   const handleReinstall = async (id: number) => {
     try {
       await dependenceApi.reinstall(id);
@@ -180,7 +197,7 @@ const Dependences: React.FC = () => {
     {
       title: '操作',
       width: 120,
-      fixed: 'right' as const,
+      fixed: isMobile ? undefined : 'right' as const,
       render: (_: any, record: Dependence) => {
         const isInstalling = record.status === 0 || record.status === 3;
         return (
@@ -211,6 +228,19 @@ const Dependences: React.FC = () => {
                 icon={<IconDelete />}
                 disabled={isInstalling}
                 title="删除"
+              />
+            </Popconfirm>
+            <Popconfirm
+              title="仅从数据库移除，不会卸载系统依赖"
+              onOk={() => handleSoftDelete(record.id)}
+            >
+              <Button
+                type="text"
+                size="mini"
+                status="warning"
+                icon={<IconMinusCircle />}
+                disabled={isInstalling}
+                title="软删除（仅移除记录）"
               />
             </Popconfirm>
           </Space>

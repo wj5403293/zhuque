@@ -180,10 +180,17 @@ const Logs: React.FC = () => {
       extra={
         <Space>
           <Select
-            placeholder="选择任务"
+            placeholder="选择任务（可搜索）"
             style={{ width: 200 }}
             value={selectedTaskId ?? undefined}
             onChange={(value) => setSelectedTaskId(value as number)}
+            showSearch
+            filterOption={(inputValue, option) =>
+              (option?.props?.children as string)
+                ?.toLowerCase()
+                .includes(inputValue.toLowerCase())
+            }
+            allowClear
           >
             {tasks.map((task) => (
               <Option key={task.id} value={task.id}>

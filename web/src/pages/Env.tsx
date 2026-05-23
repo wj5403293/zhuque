@@ -11,11 +11,31 @@ import {
   Popconfirm,
   Switch,
 } from '@arco-design/web-react';
-import { IconPlus, IconEdit, IconDelete } from '@arco-design/web-react/icon';
+import { IconPlus, IconEdit, IconDelete, IconImport } from '@arco-design/web-react/icon';
 import { envApi } from '@/api/env';
 import type { EnvVar } from '@/types';
 
 const FormItem = Form.Item;
+
+const parseDotEnvContent = (content: string): Array<{ key: string; value: string }> => {
+  const result: Array<{ key: string; value: string }> = [];
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx === -1) continue;
+    const key = trimmed.substring(0, eqIdx).trim();
+    let value = trimmed.substring(eqIdx + 1);
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    if (key) result.push({ key, value });
+  }
+  return result;
+};
 
 const Env: React.FC = () => {
   const [envVars, setEnvVars] = useState<EnvVar[]>([]);
@@ -26,6 +46,12 @@ const Env: React.FC = () => {
   const [searchKeyword, setSearchKeyword] = useState('');
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [form] = Form.useForm();
+
+  // 批量导入
+  const [batchVisible, setBatchVisible] = useState(false);
+  const [batchContent, setBatchContent] = useState('');
+  const [allowOverwrite, setAllowOverwrite] = useState(false);
+  const [batchLoading, setBatchLoading] = useState(false);
 
   useEffect(() => {
     const handleResize = () => {
@@ -89,6 +115,31 @@ const Env: React.FC = () => {
       loadEnvVars();
     } catch (error: any) {
       Message.error(error.response?.data?.error || '删除失败');
+    }
+  };
+
+  const handleBatchImport = async () => {
+    const pairs = parseDotEnvContent(batchContent);
+    if (pairs.length === 0) {
+      Message.warning('未找到有效的环境变量，请检查格式');
+      return;
+    }
+    setBatchLoading(true);
+    try {
+      const res = await envApi.batchImport(pairs, allowOverwrite);
+      const { created, updated } = res;
+      const parts = [];
+      if (created > 0) parts.push(`新增 ${created} 个`);
+      if (updated > 0) parts.push(`更新 ${updated} 个`);
+      Message.success(`导入完成：${parts.join('，')}`);
+      setBatchVisible(false);
+      setBatchContent('');
+      setAllowOverwrite(false);
+      loadEnvVars();
+    } catch (error: any) {
+      Message.error(error.response?.data?.error || '批量导入失败');
+    } finally {
+      setBatchLoading(false);
     }
   };
 
@@ -179,9 +230,14 @@ const Env: React.FC = () => {
           gap: 12,
         }}
       >
-        <Button type="primary" icon={<IconPlus />} onClick={handleAdd}>
-          新建变量
-        </Button>
+        <Space>
+          <Button type="primary" icon={<IconPlus />} onClick={handleAdd}>
+            新建变量
+          </Button>
+          <Button icon={<IconImport />} onClick={() => setBatchVisible(true)}>
+            批量导入
+          </Button>
+        </Space>
         <Input.Search
           allowClear
           placeholder="搜索变量名 / 值 / 描述，回车搜索"
@@ -224,6 +280,39 @@ const Env: React.FC = () => {
             <Input placeholder="变量描述" />
           </FormItem>
         </Form>
+      </Modal>
+
+      {/* 批量导入弹窗 */}
+      <Modal
+        title="批量导入环境变量"
+        visible={batchVisible}
+        onOk={handleBatchImport}
+        confirmLoading={batchLoading}
+        onCancel={() => {
+          setBatchVisible(false);
+          setBatchContent('');
+          setAllowOverwrite(false);
+        }}
+        autoFocus={false}
+        style={{ width: '90%', maxWidth: 600 }}
+        okText="导入"
+      >
+        <Space direction="vertical" style={{ width: '100%' }} size="medium">
+          <Input.TextArea
+            value={batchContent}
+            onChange={setBatchContent}
+            placeholder={"# 支持标准 .env 格式，每行一个变量\nAPI_KEY=your_api_key\nDB_HOST=localhost\nDEBUG=true\n# 注释行会被忽略"}
+            rows={10}
+            style={{ fontFamily: 'monospace', fontSize: 13 }}
+          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Switch checked={allowOverwrite} onChange={setAllowOverwrite} />
+            <span style={{ color: 'var(--color-text-2)' }}>允许覆盖同名变量</span>
+            <span style={{ color: 'var(--color-text-3)', fontSize: 12 }}>
+              （关闭时若存在同名变量则阻止导入）
+            </span>
+          </div>
+        </Space>
       </Modal>
     </Card>
   );

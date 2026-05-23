@@ -1,4 +1,4 @@
-use crate::models::{CreateEnvVar, EnvVar, UpdateEnvVar};
+use crate::models::{BatchImportResponse, BatchVar, CreateEnvVar, EnvVar, UpdateEnvVar};
 use anyhow::Result;
 use chrono::Utc;
 use sqlx::SqlitePool;
@@ -146,6 +146,64 @@ impl EnvService {
 
         drop(pool);
         self.get(id).await
+    }
+
+    /// 批量导入环境变量
+    pub async fn batch_import(
+        &self,
+        vars: Vec<BatchVar>,
+        overwrite: bool,
+    ) -> Result<BatchImportResponse> {
+        let existing = self.list().await?;
+        let existing_map: std::collections::HashMap<String, i64> =
+            existing.iter().map(|v| (v.key.clone(), v.id)).collect();
+
+        let conflicts: Vec<String> = vars
+            .iter()
+            .filter(|v| existing_map.contains_key(&v.key))
+            .map(|v| v.key.clone())
+            .collect();
+
+        if !overwrite && !conflicts.is_empty() {
+            return Ok(BatchImportResponse {
+                created: 0,
+                updated: 0,
+                conflicts,
+            });
+        }
+
+        let mut created = 0usize;
+        let mut updated = 0usize;
+
+        for var in vars {
+            if let Some(&id) = existing_map.get(&var.key) {
+                self.update(
+                    id,
+                    UpdateEnvVar {
+                        value: Some(var.value),
+                        remark: None,
+                        enabled: None,
+                    },
+                )
+                .await?;
+                updated += 1;
+            } else {
+                self.create(CreateEnvVar {
+                    key: var.key,
+                    value: var.value,
+                    remark: None,
+                    enabled: Some(true),
+                })
+                .await?;
+                created += 1;
+            }
+        }
+
+        Ok(BatchImportResponse {
+            created,
+            updated,
+            conflicts: vec![],
+        })
     }
 
     /// 删除环境变量

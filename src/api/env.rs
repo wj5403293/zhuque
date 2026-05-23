@@ -1,5 +1,5 @@
 use crate::api::AppState;
-use crate::models::{CreateEnvVar, UpdateEnvVar};
+use crate::models::{BatchImportRequest, CreateEnvVar, UpdateEnvVar};
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -90,4 +90,36 @@ pub async fn delete_env_var(
     }
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// 批量导入环境变量
+pub async fn batch_import_env_vars(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<BatchImportRequest>,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    let result = state
+        .env_service
+        .batch_import(payload.vars, payload.overwrite)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+        })?;
+
+    if !result.conflicts.is_empty() {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({
+                "error": format!("以下变量已存在：{}", result.conflicts.join("、")),
+                "conflicts": result.conflicts,
+            })),
+        ));
+    }
+
+    Ok(Json(serde_json::json!({
+        "created": result.created,
+        "updated": result.updated,
+    })))
 }

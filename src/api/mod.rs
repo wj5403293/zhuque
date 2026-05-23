@@ -161,6 +161,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/env",
             get(env::list_env_vars).post(env::create_env_var),
         )
+        .route("/api/env/batch", post(env::batch_import_env_vars))
         .route(
             "/api/env/:id",
             get(env::get_env_var)

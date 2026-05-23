@@ -19,6 +19,7 @@ import {
   Dropdown,
   Menu,
   Typography,
+  Radio,
 } from '@arco-design/web-react';
 import { IconPlus, IconPlayArrow, IconEdit, IconDelete, IconInfoCircle, IconStop, IconFile, IconMore, IconLink, IconPoweroff } from '@arco-design/web-react/icon';
 import { taskApi } from '@/api/task';
@@ -31,6 +32,38 @@ const { Option } = Select;
 const { Row, Col } = Grid;
 const TabPane = Tabs.TabPane;
 
+const parseDotEnvToJson = (dotenv: string): string => {
+  const result: Record<string, string> = {};
+  for (const line of dotenv.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx === -1) continue;
+    const key = trimmed.substring(0, eqIdx).trim();
+    let value = trimmed.substring(eqIdx + 1);
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    if (key) result[key] = value;
+  }
+  return Object.keys(result).length > 0 ? JSON.stringify(result, null, 2) : '';
+};
+
+const jsonToDotEnv = (json: string): string => {
+  if (!json || !json.trim()) return '';
+  try {
+    const obj = JSON.parse(json);
+    return Object.entries(obj)
+      .map(([k, v]) => `${k}=${v}`)
+      .join('\n');
+  } catch {
+    return json;
+  }
+};
+
 const Tasks: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [runningTasks, setRunningTasks] = useState<Set<number>>(new Set());
@@ -39,6 +72,7 @@ const Tasks: React.FC = () => {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [form] = Form.useForm();
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [taskEnvFormat, setTaskEnvFormat] = useState<'json' | 'dotenv'>('json');
 
   // 分组相关状态
   const [groups, setGroups] = useState<any[]>([]);
@@ -266,6 +300,7 @@ const Tasks: React.FC = () => {
       enabled: true,
       cron: ['*/5 * * * *'], // 默认每5分钟（5字段格式）
     });
+    setTaskEnvFormat('json');
     setVisible(true);
   };
 
@@ -277,6 +312,7 @@ const Tasks: React.FC = () => {
       cron: Array.isArray(task.cron) ? task.cron : [task.cron],
     };
     form.setFieldsValue(formData);
+    setTaskEnvFormat('json');
     setVisible(true);
   };
 
@@ -286,6 +322,10 @@ const Tasks: React.FC = () => {
 
       if (values.type !== 'cron') {
         values.cron = ['0 0 * * *'];
+      }
+
+      if (values.env && taskEnvFormat === 'dotenv') {
+        values.env = parseDotEnvToJson(values.env);
       }
 
       if (editingTask) {
@@ -892,12 +932,41 @@ const Tasks: React.FC = () => {
               <Divider />
 
               <FormItem
-                label="环境变量"
+                label={
+                  <Space>
+                    <span>环境变量</span>
+                    <Radio.Group
+                      type="button"
+                      size="small"
+                      value={taskEnvFormat}
+                      onChange={(val) => {
+                        const current = form.getFieldValue('env') || '';
+                        if (val === 'dotenv') {
+                          form.setFieldValue('env', jsonToDotEnv(current));
+                        } else {
+                          form.setFieldValue('env', parseDotEnvToJson(current));
+                        }
+                        setTaskEnvFormat(val);
+                      }}
+                    >
+                      <Radio value="json">JSON</Radio>
+                      <Radio value="dotenv">.env</Radio>
+                    </Radio.Group>
+                  </Space>
+                }
                 field="env"
-                extra="JSON格式，例如: {&quot;API_KEY&quot;: &quot;xxx&quot;, &quot;DEBUG&quot;: &quot;true&quot;}"
+                extra={
+                  taskEnvFormat === 'json'
+                    ? 'JSON 格式，例如: {"API_KEY": "xxx", "DEBUG": "true"}'
+                    : '.env 格式，每行一个变量，支持 # 注释行'
+                }
               >
                 <Input.TextArea
-                  placeholder='{"KEY": "value"}'
+                  placeholder={
+                    taskEnvFormat === 'json'
+                      ? '{"KEY": "value"}'
+                      : 'API_KEY=your_api_key\nDB_HOST=localhost\n# 注释行'
+                  }
                   rows={4}
                   style={{ fontFamily: 'monospace' }}
                 />

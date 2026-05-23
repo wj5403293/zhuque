@@ -27,3 +27,22 @@ pub struct UpdateEnvVar {
     pub remark: Option<String>,
     pub enabled: Option<bool>,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BatchVar {
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BatchImportRequest {
+    pub vars: Vec<BatchVar>,
+    pub overwrite: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BatchImportResponse {
+    pub created: usize,
+    pub updated: usize,
+    pub conflicts: Vec<String>,
+}

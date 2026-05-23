@@ -8,4 +8,6 @@ export const envApi = {
   create: (data: Partial<EnvVar>) => request.post('/env', data),
   update: (id: number, data: Partial<EnvVar>) => request.put(`/env/${id}`, data),
   delete: (id: number) => request.delete(`/env/${id}`),
+  batchImport: (vars: Array<{ key: string; value: string }>, overwrite: boolean) =>
+    request.post<{ created: number; updated: number }>('/env/batch', { vars, overwrite }),
 };

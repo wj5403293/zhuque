@@ -24,7 +24,18 @@ const Env: React.FC = () => {
   const [editingEnv, setEditingEnv] = useState<EnvVar | null>(null);
   const [searchInput, setSearchInput] = useState('');
   const [searchKeyword, setSearchKeyword] = useState('');
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [form] = Form.useForm();
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
 
   useEffect(() => {
     loadEnvVars();
@@ -162,8 +173,9 @@ const Env: React.FC = () => {
         style={{
           marginBottom: 16,
           display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'flex-end',
+          flexDirection: isMobile ? 'column' : 'row',
+          justifyContent: isMobile ? 'flex-start' : 'space-between',
+          alignItems: isMobile ? 'flex-end' : 'center',
           gap: 12,
         }}
       >
@@ -181,7 +193,7 @@ const Env: React.FC = () => {
             }
           }}
           onSearch={(v) => setSearchKeyword(v.trim())}
-          style={{ width: 260, maxWidth: '100%' }}
+          style={{ width: isMobile ? 260 : 260, maxWidth: '100%' }}
         />
       </div>
       <Table

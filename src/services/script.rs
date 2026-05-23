@@ -82,6 +82,14 @@ impl ScriptService {
         }
     }
 
+    fn normalize_script_type(script_type: &str) -> &str {
+        match script_type {
+            "javascript" | "node" => "js",
+            "typescript" => "ts",
+            other => other,
+        }
+    }
+
     /// 获取基础环境变量
     fn get_base_env() -> HashMap<String, String> {
         let mut env_vars = HashMap::new();
@@ -384,7 +392,7 @@ impl ScriptService {
             c.arg("-u");  // 禁用输出缓冲
             c.arg(&absolute_path);
             c
-        } else if path.ends_with(".js") {
+        } else if path.ends_with(".js") || path.ends_with(".ts") {
             let mut c = Command::new("node");
             c.arg(&absolute_path);
             c
@@ -465,6 +473,8 @@ impl ScriptService {
         let temp_dir = self.base_path.join(".temp");
         tokio::fs::create_dir_all(&temp_dir).await?;
 
+        let script_type = Self::normalize_script_type(script_type);
+
         let execution_id = uuid::Uuid::new_v4().to_string();
         let temp_file = temp_dir.join(format!("debug_{}.{}", execution_id, script_type));
         tokio::fs::write(&temp_file, content).await?;
@@ -494,6 +504,11 @@ impl ScriptService {
                 c
             }
             "js" => {
+                let mut c = Command::new("node");
+                c.arg(&temp_file_abs);
+                c
+            }
+            "ts" => {
                 let mut c = Command::new("node");
                 c.arg(&temp_file_abs);
                 c

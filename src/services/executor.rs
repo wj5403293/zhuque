@@ -109,6 +109,25 @@ impl Executor {
         }
     }
 
+    fn is_script_path(path: &str) -> bool {
+        path.ends_with(".py") || path.ends_with(".js") || path.ends_with(".ts") || path.ends_with(".sh")
+    }
+
+    fn is_python_command(command: &str) -> bool {
+        command == "python" || command == "python3" || command.ends_with("/python") || command.ends_with("/python3")
+    }
+
+    fn is_node_command(command: &str) -> bool {
+        command == "node"
+            || command.ends_with("/node")
+            || command == "bun"
+            || command.ends_with("/bun")
+            || command == "tsx"
+            || command.ends_with("/tsx")
+            || command == "ts-node"
+            || command.ends_with("/ts-node")
+    }
+
     /// 根据任务获取工作目录
     fn get_working_directory(&self, task: &Task) -> std::path::PathBuf {
         let project_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
@@ -156,9 +175,7 @@ impl Executor {
         }
 
         // 查找脚本文件（从第一个参数开始查找，因为可能直接是脚本路径）
-        let script_path = parts.iter().find(|part| {
-            part.ends_with(".py") || part.ends_with(".js") || part.ends_with(".sh")
-        });
+        let script_path = parts.iter().find(|part| Self::is_script_path(part));
 
         debug!("Found script_path: {:?}", script_path);
 
@@ -207,16 +224,16 @@ impl Executor {
 
         // 查找脚本文件并调整路径（从第一个参数开始，因为可能直接是脚本路径）
         let mut adjusted_parts: Vec<String> = parts.iter().map(|s| s.to_string()).collect();
-        let mut found_script = false;
         let mut is_python_script = false;
+        let mut is_node_script = false;
         let mut script_index = 0;
 
         for (i, part) in parts.iter().enumerate() {
-            if part.ends_with(".py") || part.ends_with(".js") || part.ends_with(".sh") {
+            if Self::is_script_path(part) {
                 let script_path = std::path::Path::new(part);
                 debug!("Found script at index {}: {}, is_absolute: {}", i, part, script_path.is_absolute());
-                found_script = true;
                 is_python_script = part.ends_with(".py");
+                is_node_script = part.ends_with(".js") || part.ends_with(".ts");
                 script_index = i;
 
                 if !script_path.is_absolute() {
@@ -256,9 +273,7 @@ impl Executor {
 
         // 如果是Python脚本，确保使用 python -u 执行
         if is_python_script {
-            let has_python_cmd = adjusted_parts.iter().any(|p|
-                p == "python" || p == "python3" || p.ends_with("/python") || p.ends_with("/python3")
-            );
+            let has_python_cmd = adjusted_parts.iter().any(|p| Self::is_python_command(p));
 
             if !has_python_cmd && script_index == 0 {
                 // 脚本是第一个参数（直接执行），转换为 python -u script.py [args...]
@@ -273,7 +288,7 @@ impl Executor {
             } else if has_python_cmd {
                 // 命令中已有python，添加-u参数
                 for (i, part) in adjusted_parts.clone().iter().enumerate() {
-                    if part == "python" || part == "python3" || part.ends_with("/python") || part.ends_with("/python3") {
+                    if Self::is_python_command(part) {
                         if i + 1 < adjusted_parts.len() && adjusted_parts[i + 1] != "-u" {
                             adjusted_parts.insert(i + 1, "-u".to_string());
                             debug!("Added -u flag to python command");
@@ -281,6 +296,20 @@ impl Executor {
                         break;
                     }
                 }
+            }
+        }
+
+        if is_node_script {
+            let has_node_cmd = adjusted_parts.iter().any(|p| Self::is_node_command(p));
+
+            if !has_node_cmd && script_index == 0 {
+                let script_path = adjusted_parts[0].clone();
+                let remaining_args: Vec<String> = adjusted_parts.iter().skip(1).cloned().collect();
+                adjusted_parts.clear();
+                adjusted_parts.push("node".to_string());
+                adjusted_parts.push(script_path);
+                adjusted_parts.extend(remaining_args);
+                debug!("Converted direct Node.js/TypeScript script execution to node");
             }
         }
 
@@ -298,9 +327,7 @@ impl Executor {
         }
 
         // 查找脚本文件（从第一个参数开始）
-        let script_path = parts.iter().find(|part| {
-            part.ends_with(".py") || part.ends_with(".js") || part.ends_with(".sh")
-        });
+        let script_path = parts.iter().find(|part| Self::is_script_path(part));
 
         if let Some(script) = script_path {
             let script_path = std::path::Path::new(script);

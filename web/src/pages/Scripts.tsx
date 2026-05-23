@@ -549,6 +549,8 @@ const Scripts: React.FC = () => {
         scriptType = 'py';
       } else if (selectedFile.name.endsWith('.js')) {
         scriptType = 'js';
+      } else if (selectedFile.name.endsWith('.ts')) {
+        scriptType = 'ts';
       }
 
       const response = await fetch('/api/scripts/debug', {
@@ -621,7 +623,7 @@ const Scripts: React.FC = () => {
   };
 
   const isExecutable = (fileName: string): boolean => {
-    return fileName.endsWith('.sh') || fileName.endsWith('.py') || fileName.endsWith('.js');
+    return fileName.endsWith('.sh') || fileName.endsWith('.py') || fileName.endsWith('.js') || fileName.endsWith('.ts');
   };
 
   const getLanguage = (fileName: string): string => {

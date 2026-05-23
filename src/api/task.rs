@@ -80,10 +80,9 @@ pub async fn create_task(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    // 重新加载调度器
     state
         .scheduler
-        .reload_tasks()
+        .add_task_to_scheduler(task.id)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -102,10 +101,9 @@ pub async fn update_task(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    // 重新加载调度器
     state
         .scheduler
-        .reload_tasks()
+        .update_task_in_scheduler(id)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -126,10 +124,9 @@ pub async fn delete_task(
         return Err(StatusCode::NOT_FOUND);
     }
 
-    // 重新加载调度器
     state
         .scheduler
-        .reload_tasks()
+        .remove_task_from_scheduler(id)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 

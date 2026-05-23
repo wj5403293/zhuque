@@ -284,20 +284,20 @@ const Tasks: React.FC = () => {
     try {
       const values = await form.validate();
 
-      // 如果不是定时任务，设置默认的cron表达式
       if (values.type !== 'cron') {
-        values.cron = ['0 0 * * *']; // 默认值，不会被使用
+        values.cron = ['0 0 * * *'];
       }
 
       if (editingTask) {
-        await taskApi.update(editingTask.id, values);
+        const updated = await taskApi.update(editingTask.id, values);
         Message.success('更新成功');
+        setTasks(prev => prev.map(t => t.id === editingTask.id ? updated : t));
       } else {
-        await taskApi.create(values);
+        const created = await taskApi.create(values);
         Message.success('创建成功');
+        setTasks(prev => [...prev, created]);
       }
       setVisible(false);
-      loadTasks();
     } catch (error: any) {
       Message.error(error.response?.data?.error || '操作失败');
     }
@@ -307,7 +307,7 @@ const Tasks: React.FC = () => {
     try {
       await taskApi.delete(id);
       Message.success('删除成功');
-      loadTasks();
+      setTasks(prev => prev.filter(t => t.id !== id));
     } catch (error: any) {
       Message.error(error.response?.data?.error || '删除失败');
     }
@@ -315,9 +315,9 @@ const Tasks: React.FC = () => {
 
   const handleToggleEnabled = async (id: number, enabled: boolean) => {
     try {
-      await taskApi.toggleEnabled(id, enabled);
+      const updated = await taskApi.toggleEnabled(id, enabled);
       Message.success(enabled ? '任务已启用' : '任务已禁用');
-      setTasks(prev => prev.map(t => t.id === id ? { ...t, enabled } : t));
+      setTasks(prev => prev.map(t => t.id === id ? updated : t));
     } catch (error: any) {
       Message.error(error.response?.data?.error || '操作失败');
     }

@@ -85,6 +85,42 @@ impl Scheduler {
         Ok(())
     }
 
+    /// 从调度器移除指定任务的所有 Job
+    pub async fn remove_task_from_scheduler(&self, task_id: i64) -> Result<()> {
+        let mut job_ids = self.job_ids.write().await;
+        let mut remaining = Vec::new();
+        for (tid, job_id) in job_ids.drain(..) {
+            if tid == task_id {
+                let _ = self.scheduler.remove(&job_id).await;
+            } else {
+                remaining.push((tid, job_id));
+            }
+        }
+        *job_ids = remaining;
+        info!("Removed task {} from scheduler", task_id);
+        Ok(())
+    }
+
+    /// 从 DB 加载指定任务并注册到调度器（若已启用且为 cron 类型）
+    pub async fn add_task_to_scheduler(&self, task_id: i64) -> Result<()> {
+        let task = self.task_service.get(task_id).await?
+            .ok_or_else(|| anyhow::anyhow!("Task not found: {}", task_id))?;
+
+        if task.enabled && task.task_type == "cron" {
+            let new_job_ids = self.add_task(task).await?;
+            self.job_ids.write().await.extend(new_job_ids);
+            info!("Added task {} to scheduler", task_id);
+        }
+        Ok(())
+    }
+
+    /// 更新调度器中的指定任务（先移除旧 Job，再按最新状态重新注册）
+    pub async fn update_task_in_scheduler(&self, task_id: i64) -> Result<()> {
+        self.remove_task_from_scheduler(task_id).await?;
+        self.add_task_to_scheduler(task_id).await?;
+        Ok(())
+    }
+
     async fn add_task(&self, task: crate::models::Task) -> Result<Vec<(i64, uuid::Uuid)>> {
         let task_id = task.id;
         let mut job_ids = Vec::new();

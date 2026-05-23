@@ -13,10 +13,10 @@ export const taskApi = {
   get: (id: number) => request.get<Task>(`/tasks/${id}`),
 
   // 创建任务
-  create: (data: Partial<Task>) => request.post('/tasks', data),
+  create: (data: Partial<Task>) => request.post<Task>('/tasks', data),
 
   // 更新任务
-  update: (id: number, data: Partial<Task>) => request.put(`/tasks/${id}`, data),
+  update: (id: number, data: Partial<Task>) => request.put<Task>(`/tasks/${id}`, data),
 
   // 删除任务
   delete: (id: number) => request.delete(`/tasks/${id}`),
@@ -29,7 +29,7 @@ export const taskApi = {
 
   // 启用/禁用任务
   toggleEnabled: (id: number, enabled: boolean) =>
-    request.put(`/tasks/${id}`, { enabled }),
+    request.put<Task>(`/tasks/${id}`, { enabled }),
 
   // 获取运行中的任务
   listRunning: () => request.get<Task[]>('/tasks/running'),

@@ -711,15 +711,6 @@ const Config: React.FC = () => {
                   <Switch />
                 </FormItem>
 
-                <FormItem
-                  label="启动时自动恢复"
-                  field="auto_restore_on_startup"
-                  triggerPropName="checked"
-                  extra="开启后，每次启动时会自动从 WebDAV 恢复最新的备份（谨慎使用）"
-                >
-                  <Switch />
-                </FormItem>
-
                 <Divider />
 
                 <Title heading={6}>WebDAV 配置</Title>

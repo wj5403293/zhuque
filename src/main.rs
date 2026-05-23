@@ -85,7 +85,6 @@ async fn main() -> Result<()> {
             cron: String::new(),
             remote_path: env_remote_path,
             max_backups: None,
-            auto_restore_on_startup: true,
         };
 
         if let Err(e) = restore_latest_backup(&backup_config, &data_dir).await {

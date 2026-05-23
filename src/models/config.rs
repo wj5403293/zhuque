@@ -62,8 +62,6 @@ pub struct AutoBackupConfig {
     pub cron: String,
     pub remote_path: Option<String>,        // WebDAV 远程路径，默认为根目录
     pub max_backups: Option<u32>,           // 最大保留备份数量，None 表示不限制
-    #[serde(default)]
-    pub auto_restore_on_startup: bool,      // 启动时自动恢复最新备份
 }
 
 impl Default for AutoBackupConfig {
@@ -76,7 +74,6 @@ impl Default for AutoBackupConfig {
             cron: "0 2 * * *".to_string(), // 默认每天凌晨2点（5字段格式）
             remote_path: None,
             max_backups: Some(10),         // 默认保留10个备份
-            auto_restore_on_startup: false, // 默认不自动恢复
         }
     }
 }

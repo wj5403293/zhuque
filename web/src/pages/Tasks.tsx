@@ -20,7 +20,7 @@ import {
   Menu,
   Typography,
 } from '@arco-design/web-react';
-import { IconPlus, IconPlayArrow, IconEdit, IconDelete, IconInfoCircle, IconStop, IconFile, IconMore, IconLink } from '@arco-design/web-react/icon';
+import { IconPlus, IconPlayArrow, IconEdit, IconDelete, IconInfoCircle, IconStop, IconFile, IconMore, IconLink, IconPoweroff } from '@arco-design/web-react/icon';
 import { taskApi } from '@/api/task';
 import { logApi } from '@/api/log';
 import axios from 'axios';
@@ -313,6 +313,16 @@ const Tasks: React.FC = () => {
     }
   };
 
+  const handleToggleEnabled = async (id: number, enabled: boolean) => {
+    try {
+      await taskApi.toggleEnabled(id, enabled);
+      Message.success(enabled ? '任务已启用' : '任务已禁用');
+      setTasks(prev => prev.map(t => t.id === id ? { ...t, enabled } : t));
+    } catch (error: any) {
+      Message.error(error.response?.data?.error || '操作失败');
+    }
+  };
+
   const handleRun = async (id: number) => {
     try {
       await taskApi.run(id);
@@ -584,6 +594,16 @@ const Tasks: React.FC = () => {
               <Space>
                 <IconEdit />
                 编辑
+              </Space>
+            </Menu.Item>
+            <Menu.Item
+              key="toggle"
+              onClick={() => handleToggleEnabled(record.id, !record.enabled)}
+              disabled={isRunning}
+            >
+              <Space>
+                <IconPoweroff />
+                {record.enabled ? '禁用' : '启用'}
               </Space>
             </Menu.Item>
             {webhookToken && (

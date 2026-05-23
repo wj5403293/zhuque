@@ -27,6 +27,10 @@ export const taskApi = {
   // 终止任务
   kill: (id: number) => request.delete(`/tasks/${id}/kill`),
 
+  // 启用/禁用任务
+  toggleEnabled: (id: number, enabled: boolean) =>
+    request.put(`/tasks/${id}`, { enabled }),
+
   // 获取运行中的任务
   listRunning: () => request.get<Task[]>('/tasks/running'),
 

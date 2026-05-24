@@ -145,6 +145,15 @@ impl Scheduler {
                 Box::pin(async move {
                     info!("Running scheduled task: {}", task.name);
 
+                    // 防止调度重入：如果上一次执行尚未完成，跳过本次触发
+                    if executor.list_running().await.contains(&task.id) {
+                        info!(
+                            "Task '{}' (id={}) is still running, skipping this scheduled trigger",
+                            task.name, task.id
+                        );
+                        return;
+                    }
+
                     let start_time = chrono::Utc::now();
 
                     // 执行任务

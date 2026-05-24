@@ -475,6 +475,19 @@ module.exports.default = sendNotify;
 
     /// 执行任务并返回 (execution_id, output, success)
     pub async fn execute(&self, task: &Task) -> Result<(String, String, bool)> {
+        // 防止并发重入：如果该任务已在运行中，跳过本次触发
+        if self.running_tasks.read().await.contains_key(&task.id) {
+            info!(
+                "Task '{}' (id={}) is already running, skipping concurrent trigger",
+                task.name, task.id
+            );
+            return Ok((
+                String::new(),
+                format!("[SKIPPED] Task '{}' is already running, concurrent trigger was skipped.", task.name),
+                true,
+            ));
+        }
+
         let execution_id = Uuid::new_v4().to_string();
         let start_time = std::time::Instant::now();
         debug!("Executing task: {} ({}) with execution_id: {}", task.name, task.command, execution_id);
@@ -763,6 +776,14 @@ module.exports.default = sendNotify;
         &self,
         task: &Task,
     ) -> Result<(String, impl tokio_stream::Stream<Item = Result<String>>)> {
+        // 防止并发重入
+        if self.running_tasks.read().await.contains_key(&task.id) {
+            return Err(anyhow!(
+                "Task '{}' (id={}) is already running",
+                task.name, task.id
+            ));
+        }
+
         let execution_id = Uuid::new_v4().to_string();
         debug!("Executing task with stream: {} ({}) with execution_id: {}", task.name, task.command, execution_id);
 

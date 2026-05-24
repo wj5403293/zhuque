@@ -95,6 +95,11 @@ pub async fn login(
                         tracing::error!("Failed to log login: {}", e);
                     }
                 });
+                // 登录通知
+                let notif = state.notification_service.clone();
+                let un2 = request.username.clone();
+                let ip2 = get_client_ip(&headers, addr);
+                tokio::spawn(async move { notif.notify_login(&un2, &ip2).await });
             }
             Ok(Json(response))
         }
@@ -130,6 +135,11 @@ pub async fn verify_totp(
                             tracing::error!("Failed to log login: {}", e);
                         }
                     });
+                    // 登录通知
+                    let notif = state.notification_service.clone();
+                    let un2 = username.clone();
+                    let ip2 = get_client_ip(&headers, addr);
+                    tokio::spawn(async move { notif.notify_login(&un2, &ip2).await });
                     Ok(Json(response))
                 }
                 Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),

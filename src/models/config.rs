@@ -86,6 +86,8 @@ pub struct NotificationConfig {
     pub on_success: bool,
     pub on_failure: bool,
     pub on_killed: bool,
+    #[serde(default)]
+    pub on_login: bool,
     pub channels: Vec<ChannelConfig>,
 }
 
@@ -96,6 +98,7 @@ impl Default for NotificationConfig {
             on_success: false,
             on_failure: true,
             on_killed: true,
+            on_login: false,
             channels: vec![],
         }
     }

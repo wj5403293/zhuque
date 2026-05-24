@@ -159,6 +159,7 @@ export interface NotificationConfig {
   on_success: boolean;
   on_failure: boolean;
   on_killed: boolean;
+  on_login: boolean;
   channels: ChannelConfig[];
 }
 

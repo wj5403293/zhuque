@@ -19,6 +19,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{error, info};
 use uuid;
+use chrono;
 
 /// 正在运行的 execution_id -> task_id 映射，用于校验脚本通知 token
 pub type NotifyTokenRegistry = Arc<RwLock<HashMap<String, i64>>>;
@@ -154,6 +155,33 @@ impl NotificationService {
                     "Notification sent [{}] for task '{}'",
                     channel.channel_type, task_name
                 );
+            }
+        }
+    }
+
+    /// 登录成功后发送通知
+    pub async fn notify_login(&self, username: &str, ip: &str) {
+        let config = match self.get_config().await {
+            Ok(c) => c,
+            Err(e) => {
+                error!("获取通知配置失败: {}", e);
+                return;
+            }
+        };
+        if !config.enabled || !config.on_login {
+            return;
+        }
+
+        let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let title = "🔐 朱雀登录通知".to_string();
+        let content = format!("用户 {} 登录成功\nIP：{}\n时间：{}", username, ip, now);
+
+        for channel in &config.channels {
+            if !channel.enabled {
+                continue;
+            }
+            if let Err(e) = self.send_to_channel(channel, &title, &content).await {
+                error!("登录通知发送失败 [{}]: {}", channel.channel_type, e);
             }
         }
     }

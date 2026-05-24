@@ -278,6 +278,7 @@ const Notifications: React.FC = () => {
   const [onSuccess, setOnSuccess] = useState(false);
   const [onFailure, setOnFailure] = useState(true);
   const [onKilled,  setOnKilled]  = useState(true);
+  const [onLogin,   setOnLogin]   = useState(false);
 
   // 渠道列表
   const [channels, setChannels] = useState<ChannelConfig[]>([]);
@@ -300,6 +301,7 @@ const Notifications: React.FC = () => {
         setOnSuccess(cfg.on_success);
         setOnFailure(cfg.on_failure);
         setOnKilled(cfg.on_killed);
+        setOnLogin(cfg.on_login ?? false);
         setChannels(cfg.channels ?? []);
       })
       .catch(() => Message.error('加载通知配置失败'))
@@ -376,7 +378,7 @@ const Notifications: React.FC = () => {
     setSaving(true);
     try {
       const config: NotificationConfig = {
-        enabled, on_success: onSuccess, on_failure: onFailure, on_killed: onKilled,
+        enabled, on_success: onSuccess, on_failure: onFailure, on_killed: onKilled, on_login: onLogin,
         channels,
       };
       await notificationApi.updateConfig(config);
@@ -396,27 +398,36 @@ const Notifications: React.FC = () => {
 
         {/* ── 全局开关 ── */}
         <Card title="通知设置" style={{ marginBottom: 16 }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: isMobile ? 12 : 24 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {/* 第一行：总开关 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Text>通知总开关</Text>
               <Switch checked={enabled} onChange={setEnabled} />
             </div>
-            <Divider type="vertical" style={{ height: 22, margin: 0, display: isMobile ? 'none' : undefined }} />
-            <Text style={{ color: 'var(--color-text-3)', alignSelf: 'center' }}>触发条件：</Text>
-            <Space wrap size={[12, 8]}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Switch size="small" checked={onSuccess} onChange={setOnSuccess} />
-                <Text style={{ fontSize: 13 }}>成功时</Text>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Switch size="small" checked={onFailure} onChange={setOnFailure} />
-                <Text style={{ fontSize: 13 }}>失败时</Text>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Switch size="small" checked={onKilled} onChange={setOnKilled} />
-                <Text style={{ fontSize: 13 }}>终止时</Text>
-              </div>
-            </Space>
+            {/* 第二行：触发条件 */}
+            <div>
+              <Text style={{ fontSize: 13, color: 'var(--color-text-3)', display: 'block', marginBottom: 8 }}>
+                触发条件
+              </Text>
+              <Space wrap size={[16, 8]}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Switch size="small" checked={onSuccess} onChange={setOnSuccess} />
+                  <Text style={{ fontSize: 13 }}>成功时</Text>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Switch size="small" checked={onFailure} onChange={setOnFailure} />
+                  <Text style={{ fontSize: 13 }}>失败时</Text>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Switch size="small" checked={onKilled} onChange={setOnKilled} />
+                  <Text style={{ fontSize: 13 }}>终止时</Text>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Switch size="small" checked={onLogin} onChange={setOnLogin} />
+                  <Text style={{ fontSize: 13 }}>登录时</Text>
+                </div>
+              </Space>
+            </div>
           </div>
         </Card>
 

@@ -153,6 +153,9 @@ pub struct ResendConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct WeComConfig {
+    #[serde(default)]
+    pub key: String,
+    #[serde(default)]
     pub webhook_url: String,
 }
 

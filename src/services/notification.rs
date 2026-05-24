@@ -472,17 +472,21 @@ impl NotificationService {
     // ─── 企业微信机器人 ───────────────────────────────────────────────────────
 
     async fn send_wecom(&self, cfg: &WeComConfig, title: &str, content: &str) -> Result<()> {
-        if cfg.webhook_url.is_empty() {
-            return Err(anyhow!("企业微信: webhook_url 不能为空"));
-        }
+        let url = if !cfg.key.is_empty() {
+            format!("https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key={}", cfg.key)
+        } else if !cfg.webhook_url.is_empty() {
+            cfg.webhook_url.clone()
+        } else {
+            return Err(anyhow!("企业微信: key 不能为空"));
+        };
 
-        let text = format!("**{}**\n{}", title, content);
+        let text = format!("{}\n{}", title, content);
         let res = self
             .http_client
-            .post(&cfg.webhook_url)
+            .post(&url)
             .json(&json!({
-                "msgtype": "markdown",
-                "markdown": { "content": text }
+                "msgtype": "text",
+                "text": { "content": text }
             }))
             .send()
             .await?;

@@ -66,7 +66,7 @@ const typeColor = (t: string) => CHANNEL_TYPES.find(c => c.value === t)?.color ?
 const defaults: Record<string, object> = {
   telegram: { bot_token: '', chat_id: '', proxy: '' },
   pushplus: { token: '', topic: '' },
-  wecom:    { webhook_url: '' },
+  wecom:    { key: '' },
   smtp:     { host: '', port: 465, username: '', password: '', from: '', to: [], use_tls: true },
   resend:   { api_key: '', from: '', to: [] },
   webhook:  { url: '', method: 'POST', headers: {}, body_template: '' },
@@ -154,9 +154,9 @@ const ConfigForm: React.FC<ConfigFormProps> = ({ type, value, onChange, isMobile
 
   if (type === 'wecom') return (
     <Form layout={layout} labelCol={lc} wrapperCol={wc}>
-      <FormItem label="Webhook URL" required>
-        <Input placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..."
-          value={value.webhook_url} onChange={v => set('webhook_url', v)} />
+      <FormItem label="Key" required>
+        <Input placeholder="企业微信机器人 key（webhook URL 中 key= 后面的部分）"
+          value={value.key} onChange={v => set('key', v)} />
       </FormItem>
     </Form>
   );

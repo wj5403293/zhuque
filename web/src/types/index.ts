@@ -137,7 +137,7 @@ export interface ResendConfig {
 }
 
 export interface WeComConfig {
-  webhook_url: string;
+  key: string;
 }
 
 export interface WebhookConfig {

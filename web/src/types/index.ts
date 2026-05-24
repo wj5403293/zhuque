@@ -105,3 +105,55 @@ export interface ApiResponse<T = any> {
   error?: string;
   message?: string;
 }
+
+// ─── 通知配置类型 ─────────────────────────────────────────────────────────────
+
+export interface TelegramConfig {
+  bot_token: string;
+  chat_id: string;
+  proxy?: string;
+}
+
+export interface PushPlusConfig {
+  token: string;
+  topic?: string;
+}
+
+export interface SmtpConfig {
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  from: string;
+  to: string[];
+  use_tls: boolean;
+}
+
+export interface ResendConfig {
+  api_key: string;
+  from: string;
+  to: string[];
+}
+
+export interface WeComConfig {
+  webhook_url: string;
+}
+
+export interface ChannelConfig {
+  type: string;
+  enabled: boolean;
+  config: TelegramConfig | PushPlusConfig | SmtpConfig | ResendConfig | WeComConfig | Record<string, unknown>;
+}
+
+export interface NotificationConfig {
+  enabled: boolean;
+  on_success: boolean;
+  on_failure: boolean;
+  on_killed: boolean;
+  channels: ChannelConfig[];
+}
+
+export interface TestChannelRequest {
+  channel_type: string;
+  config: Record<string, unknown>;
+}

@@ -12,6 +12,7 @@ import Logs from '@/pages/Logs';
 import LoginLogs from '@/pages/LoginLogs';
 import Config from '@/pages/Config';
 import Terminal from '@/pages/Terminal';
+import Notifications from '@/pages/Notifications';
 
 const router = createBrowserRouter([
   {
@@ -61,6 +62,10 @@ const router = createBrowserRouter([
       {
         path: 'config',
         element: <Config />,
+      },
+      {
+        path: 'notifications',
+        element: <Notifications />,
       },
       {
         path: 'terminal',

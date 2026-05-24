@@ -5,6 +5,7 @@ pub mod dependence;
 pub mod env;
 pub mod log;
 pub mod login_log;
+pub mod notification;
 pub mod script;
 pub mod subscription;
 pub mod system;
@@ -15,7 +16,7 @@ pub mod terminal;
 
 use crate::middleware::{auth_middleware, webhook_auth_middleware};
 use crate::scheduler::{Scheduler, SubscriptionScheduler, BackupScheduler};
-use crate::services::{AuthService, ConfigService, DependenceService, EnvService, LoginLogService, LogService, ScriptService, SubscriptionService, SystemLogCollector, TaskService, TaskGroupService, TotpService, UserService};
+use crate::services::{AuthService, ConfigService, DependenceService, EnvService, LoginLogService, LogService, NotificationService, ScriptService, SubscriptionService, SystemLogCollector, TaskService, TaskGroupService, TotpService, UserService};
 
 #[cfg(not(target_os = "android"))]
 use crate::services::TerminalService;
@@ -54,6 +55,7 @@ pub struct AppState {
     pub backup_scheduler: Option<Arc<BackupScheduler>>,
     pub db_pool: Arc<RwLock<SqlitePool>>,
     pub system_log_collector: SystemLogCollector,
+    pub notification_service: Arc<NotificationService>,
 }
 
 impl AppState {
@@ -270,7 +272,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/system/info", get(system::get_system_info))
         .route("/api/system/webhook-config", get(system::get_webhook_config))
         .route("/api/system/logs", get(system_log::get_system_logs))
-        .route("/api/system/logs/stream", get(system_log::stream_system_logs));
+        .route("/api/system/logs/stream", get(system_log::stream_system_logs))
+        // 通知配置
+        .route("/api/notification/config", get(notification::get_config).post(notification::update_config))
+        .route("/api/notification/test", post(notification::test_channel));
 
     // 终端路由（仅非 Android 平台）
     #[cfg(not(target_os = "android"))]
@@ -296,6 +301,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/auth/setup", post(auth::initial_setup))
         .route("/api/auth/login", post(auth::login))
         .route("/api/auth/totp/verify", post(auth::verify_totp))
+        .route("/api/notify/send", post(notification::script_notify))
         .merge(webhook_routes)
         .merge(protected_routes)
         .with_state(state)

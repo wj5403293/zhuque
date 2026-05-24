@@ -1,5 +1,5 @@
 use crate::models::Task;
-use crate::services::{EnvService, ConfigService};
+use crate::services::{EnvService, ConfigService, NotificationService, NotifyTokenRegistry};
 use crate::utils::python_detector::PYTHON_CMD;
 use anyhow::{anyhow, Result};
 use serde::Serialize;
@@ -93,11 +93,25 @@ pub struct Executor {
     log_buffers: Arc<RwLock<HashMap<String, Vec<String>>>>, // execution_id -> log buffer
     executions: Arc<RwLock<HashMap<String, ExecutionInfo>>>, // execution_id -> execution info
     running_tasks_notifier: broadcast::Sender<RunningTasksUpdate>, // 运行任务状态变化通知
+    notification_service: Option<Arc<NotificationService>>,
+    token_registry: NotifyTokenRegistry,
 }
 
 impl Executor {
-    pub fn new(env_service: Arc<EnvService>, config_service: Arc<ConfigService>) -> Self {
+    pub fn new(
+        env_service: Arc<EnvService>,
+        config_service: Arc<ConfigService>,
+        notification_service: Option<Arc<NotificationService>>,
+        token_registry: NotifyTokenRegistry,
+    ) -> Self {
         let (tx, _) = broadcast::channel(100);
+
+        tokio::spawn(async {
+            if let Err(e) = Self::init_notify_helpers().await {
+                error!("Failed to init notify helpers: {}", e);
+            }
+        });
+
         Self {
             env_service,
             config_service,
@@ -106,6 +120,8 @@ impl Executor {
             log_buffers: Arc::new(RwLock::new(HashMap::new())),
             executions: Arc::new(RwLock::new(HashMap::new())),
             running_tasks_notifier: tx,
+            notification_service,
+            token_registry,
         }
     }
 
@@ -357,6 +373,105 @@ impl Executor {
         }
     }
 
+    /// 初始化脚本通知 helper 文件（启动时调用一次）
+    async fn init_notify_helpers() -> Result<()> {
+        let dir = std::path::Path::new("/tmp/zhuque-helpers");
+        tokio::fs::create_dir_all(dir).await?;
+
+        let notify_bin = r#"#!/usr/bin/env python3
+import sys, os, json
+from urllib import request as _req
+
+url   = os.environ.get("ZHUQUE_NOTIFY_URL", "")
+token = os.environ.get("ZHUQUE_NOTIFY_TOKEN", "")
+title   = sys.argv[1] if len(sys.argv) > 1 else ""
+content = sys.argv[2] if len(sys.argv) > 2 else ""
+
+if not url or not token:
+    sys.exit(0)
+
+payload = json.dumps({"title": title, "content": content}).encode()
+req = _req.Request(
+    url, data=payload,
+    headers={"Authorization": "Bearer " + token,
+             "Content-Type": "application/json"}
+)
+try:
+    _req.urlopen(req, timeout=10)
+except Exception as e:
+    print("[notify] send failed:", e, file=sys.stderr)
+"#;
+        let bin_path = dir.join("notify");
+        tokio::fs::write(&bin_path, notify_bin).await?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = tokio::fs::metadata(&bin_path).await?.permissions();
+            perms.set_mode(0o755);
+            tokio::fs::set_permissions(&bin_path, perms).await?;
+        }
+
+        tokio::fs::write(
+            dir.join("notify.py"),
+            r#"import subprocess as _sp
+
+def send(title: str, content: str) -> None:
+    _sp.run(['notify', title, content])
+
+sendNotify = send
+"#,
+        )
+        .await?;
+
+        Ok(())
+    }
+
+    /// 将 notify 工具注入到任务进程的环境变量中
+    async fn inject_notify_env(
+        env_vars: &mut HashMap<String, String>,
+        token: &str,
+        working_dir: &std::path::Path,
+    ) {
+        let helpers_dir = "/tmp/zhuque-helpers";
+
+        let old_path = env_vars.get("PATH").cloned().unwrap_or_default();
+        env_vars.insert("PATH".to_string(), format!("{}:{}", helpers_dir, old_path));
+
+        let old_pypath = env_vars.get("PYTHONPATH").cloned().unwrap_or_default();
+        let new_pypath = if old_pypath.is_empty() {
+            helpers_dir.to_string()
+        } else {
+            format!("{}:{}", helpers_dir, old_pypath)
+        };
+        env_vars.insert("PYTHONPATH".to_string(), new_pypath);
+
+        env_vars.insert(
+            "ZHUQUE_NOTIFY_URL".to_string(),
+            "http://127.0.0.1:3000/api/notify/send".to_string(),
+        );
+        env_vars.insert("ZHUQUE_NOTIFY_TOKEN".to_string(), token.to_string());
+
+        // sendNotify.js 写到脚本工作目录，支持 require('./sendNotify')
+        let js_path = working_dir.join("sendNotify.js");
+        if !js_path.exists() {
+            let _ = tokio::fs::write(
+                &js_path,
+                r#"'use strict';
+const { spawnSync } = require('child_process');
+
+function sendNotify(title, content) {
+    spawnSync('notify', [String(title), String(content)], { stdio: 'inherit' });
+}
+
+module.exports = { sendNotify };
+module.exports.default = sendNotify;
+"#,
+            )
+            .await;
+        }
+    }
+
     /// 执行任务并返回 (execution_id, output, success)
     pub async fn execute(&self, task: &Task) -> Result<(String, String, bool)> {
         let execution_id = Uuid::new_v4().to_string();
@@ -379,7 +494,7 @@ impl Executor {
         self.executions.write().await.insert(execution_id.clone(), exec_info);
 
         // 解析环境变量
-        let env_vars = self.parse_env(&task.env).await;
+        let mut env_vars = self.parse_env(&task.env).await;
 
         // 获取工作目录（提前计算，供前置、主命令、后置命令使用）
         let working_dir = self.get_working_directory(&task);
@@ -388,6 +503,10 @@ impl Executor {
         if !working_dir.exists() {
             tokio::fs::create_dir_all(&working_dir).await?;
         }
+
+        // 注册 notify token 并注入环境变量
+        self.token_registry.write().await.insert(execution_id.clone(), task.id);
+        Self::inject_notify_env(&mut env_vars, &execution_id, &working_dir).await;
 
         debug!("Working directory: {:?}", working_dir);
 
@@ -602,6 +721,31 @@ impl Executor {
         };
         let _ = self.running_tasks_notifier.send(update);
 
+        // 清理 notify token
+        self.token_registry.write().await.remove(&execution_id);
+
+        // 平台级任务通知（后台发送，不阻塞返回）
+        if let Some(notif_svc) = &self.notification_service {
+            let status = if overall_success { "success" } else { "failed" };
+            let output_tail: String = output
+                .lines()
+                .rev()
+                .take(20)
+                .collect::<Vec<&str>>()
+                .into_iter()
+                .rev()
+                .collect::<Vec<&str>>()
+                .join("\n");
+            let notif_svc = notif_svc.clone();
+            let task_name = task.name.clone();
+            let status = status.to_string();
+            tokio::spawn(async move {
+                notif_svc
+                    .notify_task_result(&task_name, &status, duration, &output_tail)
+                    .await;
+            });
+        }
+
         if overall_success {
             info!("Task {} completed successfully", task.name);
         } else {
@@ -635,7 +779,7 @@ impl Executor {
         self.executions.write().await.insert(execution_id.clone(), exec_info);
 
         // 解析环境变量
-        let env_vars = self.parse_env(&task.env).await;
+        let mut env_vars = self.parse_env(&task.env).await;
 
         // 获取工作目录
         let working_dir = self.get_working_directory(&task);
@@ -644,6 +788,10 @@ impl Executor {
         if !working_dir.exists() {
             tokio::fs::create_dir_all(&working_dir).await?;
         }
+
+        // 注册 notify token 并注入环境变量
+        self.token_registry.write().await.insert(execution_id.clone(), task.id);
+        Self::inject_notify_env(&mut env_vars, &execution_id, &working_dir).await;
 
         // 给脚本文件添加执行权限
         self.ensure_script_executable(&task.command, &working_dir).await;
@@ -692,6 +840,7 @@ impl Executor {
         let executions = self.executions.clone();
         let exec_id = execution_id.clone();
         let notifier = self.running_tasks_notifier.clone();
+        let token_registry = self.token_registry.clone();
 
         let stream = async_stream::stream! {
             let mut stdout_reader = LineReader::new(stdout);
@@ -769,6 +918,9 @@ impl Executor {
                 last_run_duration: duration,
             };
             let _ = notifier.send(update);
+
+            // 清理 notify token
+            token_registry.write().await.remove(&exec_id);
 
             log_channels.write().await.remove(&exec_id);
             executions.write().await.remove(&exec_id);

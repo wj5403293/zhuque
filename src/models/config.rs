@@ -77,3 +77,70 @@ impl Default for AutoBackupConfig {
         }
     }
 }
+
+// ─── 通知配置 ─────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NotificationConfig {
+    pub enabled: bool,
+    pub on_success: bool,
+    pub on_failure: bool,
+    pub on_killed: bool,
+    pub channels: Vec<ChannelConfig>,
+}
+
+impl Default for NotificationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            on_success: false,
+            on_failure: true,
+            on_killed: true,
+            channels: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChannelConfig {
+    #[serde(rename = "type")]
+    pub channel_type: String,
+    pub enabled: bool,
+    pub config: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TelegramConfig {
+    pub bot_token: String,
+    pub chat_id: String,
+    pub proxy: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PushPlusConfig {
+    pub token: String,
+    pub topic: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SmtpConfig {
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    pub password: String,
+    pub from: String,
+    pub to: Vec<String>,
+    pub use_tls: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ResendConfig {
+    pub api_key: String,
+    pub from: String,
+    pub to: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct WeComConfig {
+    pub webhook_url: String,
+}

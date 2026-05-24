@@ -9,7 +9,7 @@ use anyhow::Result;
 use api::AppState;
 use models::db::init_db;
 use scheduler::{Scheduler, SubscriptionScheduler, BackupScheduler};
-use services::{AuthService, ConfigService, DependenceService, EnvService, Executor, LogService, LoginLogService, ScriptService, SubscriptionService, SystemLogCollector, TaskService, TaskGroupService, TotpService, UserService};
+use services::{AuthService, ConfigService, DependenceService, EnvService, Executor, LogService, LoginLogService, NotificationService, NotifyTokenRegistry, ScriptService, SubscriptionService, SystemLogCollector, TaskService, TaskGroupService, TotpService, UserService};
 
 #[cfg(not(target_os = "android"))]
 use services::TerminalService;
@@ -117,8 +117,20 @@ async fn main() -> Result<()> {
     #[cfg(not(target_os = "android"))]
     let terminal_service = Arc::new(TerminalService::new(scripts_dir.clone()));
 
+    // 初始化通知服务
+    let token_registry: NotifyTokenRegistry = Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new()));
+    let notification_service = Arc::new(NotificationService::new(
+        config_service.clone(),
+        token_registry.clone(),
+    ));
+
     let totp_service = Arc::new(TotpService::new(config_service.clone()));
-    let executor = Arc::new(Executor::new(env_service.clone(), config_service.clone()));
+    let executor = Arc::new(Executor::new(
+        env_service.clone(),
+        config_service.clone(),
+        Some(notification_service.clone()),
+        token_registry,
+    ));
 
     script_service.init().await?;
 
@@ -208,6 +220,7 @@ async fn main() -> Result<()> {
         backup_scheduler,
         db_pool: shared_pool,
         system_log_collector,
+        notification_service,
     });
 
     // 创建路由

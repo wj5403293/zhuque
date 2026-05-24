@@ -96,6 +96,7 @@ pub struct Executor {
     running_tasks_notifier: broadcast::Sender<RunningTasksUpdate>, // 运行任务状态变化通知
     notification_service: Option<Arc<NotificationService>>,
     token_registry: NotifyTokenRegistry,
+    helpers_dir: std::path::PathBuf,
 }
 
 impl Executor {
@@ -104,11 +105,13 @@ impl Executor {
         config_service: Arc<ConfigService>,
         notification_service: Option<Arc<NotificationService>>,
         token_registry: NotifyTokenRegistry,
+        helpers_dir: std::path::PathBuf,
     ) -> Self {
         let (tx, _) = broadcast::channel(100);
 
-        tokio::spawn(async {
-            if let Err(e) = Self::init_notify_helpers().await {
+        let helpers_dir_clone = helpers_dir.clone();
+        tokio::spawn(async move {
+            if let Err(e) = Self::init_notify_helpers(&helpers_dir_clone).await {
                 error!("Failed to init notify helpers: {}", e);
             }
         });
@@ -123,6 +126,7 @@ impl Executor {
             running_tasks_notifier: tx,
             notification_service,
             token_registry,
+            helpers_dir,
         }
     }
 
@@ -322,11 +326,12 @@ impl Executor {
             if !has_node_cmd && script_index == 0 {
                 let script_path = adjusted_parts[0].clone();
                 let remaining_args: Vec<String> = adjusted_parts.iter().skip(1).cloned().collect();
+                let runner = if script_path.ends_with(".ts") { "bun" } else { "node" };
                 adjusted_parts.clear();
-                adjusted_parts.push("node".to_string());
+                adjusted_parts.push(runner.to_string());
                 adjusted_parts.push(script_path);
                 adjusted_parts.extend(remaining_args);
-                debug!("Converted direct Node.js/TypeScript script execution to node");
+                debug!("Converted direct Node.js/TypeScript script execution to {}", runner);
             }
         }
 
@@ -374,9 +379,8 @@ impl Executor {
         }
     }
 
-    /// 初始化脚本通知 helper 文件（启动时调用一次）
-    async fn init_notify_helpers() -> Result<()> {
-        let dir = std::path::Path::new("/tmp/zhuque-helpers");
+    /// 初始化脚本通知 helper 文件（启动时调用一次，或在 helper 丢失时懒重建）
+    async fn init_notify_helpers(dir: &std::path::Path) -> Result<()> {
         tokio::fs::create_dir_all(dir).await?;
 
         let notify_bin = r#"#!/usr/bin/env python3
@@ -425,40 +429,9 @@ sendNotify = send
         )
         .await?;
 
-        Ok(())
-    }
-
-    /// 将 notify 工具注入到任务进程的环境变量中
-    async fn inject_notify_env(
-        env_vars: &mut HashMap<String, String>,
-        token: &str,
-        working_dir: &std::path::Path,
-    ) {
-        let helpers_dir = "/tmp/zhuque-helpers";
-
-        let old_path = env_vars.get("PATH").cloned().unwrap_or_default();
-        env_vars.insert("PATH".to_string(), format!("{}:{}", helpers_dir, old_path));
-
-        let old_pypath = env_vars.get("PYTHONPATH").cloned().unwrap_or_default();
-        let new_pypath = if old_pypath.is_empty() {
-            helpers_dir.to_string()
-        } else {
-            format!("{}:{}", helpers_dir, old_pypath)
-        };
-        env_vars.insert("PYTHONPATH".to_string(), new_pypath);
-
-        env_vars.insert(
-            "ZHUQUE_NOTIFY_URL".to_string(),
-            "http://127.0.0.1:3000/api/notify/send".to_string(),
-        );
-        env_vars.insert("ZHUQUE_NOTIFY_TOKEN".to_string(), token.to_string());
-
-        // sendNotify.js 写到脚本工作目录，支持 require('./sendNotify')
-        let js_path = working_dir.join("sendNotify.js");
-        if !js_path.exists() {
-            let _ = tokio::fs::write(
-                &js_path,
-                r#"'use strict';
+        tokio::fs::write(
+            dir.join("sendNotify.js"),
+            r#"'use strict';
 const { spawnSync } = require('child_process');
 
 function sendNotify(title, content) {
@@ -468,9 +441,65 @@ function sendNotify(title, content) {
 module.exports = { sendNotify };
 module.exports.default = sendNotify;
 "#,
-            )
-            .await;
+        )
+        .await?;
+
+        tokio::fs::write(
+            dir.join("sendNotify.ts"),
+            r#"import { spawnSync } from 'child_process';
+
+export function sendNotify(title: string, content: string): void {
+    spawnSync('notify', [String(title), String(content)], { stdio: 'inherit' });
+}
+
+export default sendNotify;
+"#,
+        )
+        .await?;
+
+        Ok(())
+    }
+
+    /// 将 notify 工具注入到任务进程的环境变量中
+    async fn inject_notify_env(
+        env_vars: &mut HashMap<String, String>,
+        token: &str,
+        helpers_dir: &std::path::Path,
+    ) {
+        // 懒重建：如果 helper 文件丢失（如数据目录被清理），在此重建
+        let bin_path = helpers_dir.join("notify");
+        if !bin_path.exists() {
+            if let Err(e) = Self::init_notify_helpers(helpers_dir).await {
+                error!("Failed to re-init notify helpers: {}", e);
+            }
         }
+
+        let helpers_str = helpers_dir.to_string_lossy();
+
+        let old_path = env_vars.get("PATH").cloned().unwrap_or_default();
+        env_vars.insert("PATH".to_string(), format!("{}:{}", helpers_str, old_path));
+
+        let old_pypath = env_vars.get("PYTHONPATH").cloned().unwrap_or_default();
+        let new_pypath = if old_pypath.is_empty() {
+            helpers_str.to_string()
+        } else {
+            format!("{}:{}", helpers_str, old_pypath)
+        };
+        env_vars.insert("PYTHONPATH".to_string(), new_pypath);
+
+        let old_node_path = env_vars.get("NODE_PATH").cloned().unwrap_or_default();
+        let new_node_path = if old_node_path.is_empty() {
+            helpers_str.to_string()
+        } else {
+            format!("{}:{}", helpers_str, old_node_path)
+        };
+        env_vars.insert("NODE_PATH".to_string(), new_node_path);
+
+        env_vars.insert(
+            "ZHUQUE_NOTIFY_URL".to_string(),
+            "http://127.0.0.1:3000/api/notify/send".to_string(),
+        );
+        env_vars.insert("ZHUQUE_NOTIFY_TOKEN".to_string(), token.to_string());
     }
 
     /// 执行任务并返回 (execution_id, output, success)
@@ -520,7 +549,7 @@ module.exports.default = sendNotify;
 
         // 注册 notify token 并注入环境变量
         self.token_registry.write().await.insert(execution_id.clone(), task.id);
-        Self::inject_notify_env(&mut env_vars, &execution_id, &working_dir).await;
+        Self::inject_notify_env(&mut env_vars, &execution_id, &self.helpers_dir).await;
 
         debug!("Working directory: {:?}", working_dir);
 
@@ -815,7 +844,7 @@ module.exports.default = sendNotify;
 
         // 注册 notify token 并注入环境变量
         self.token_registry.write().await.insert(execution_id.clone(), task.id);
-        Self::inject_notify_env(&mut env_vars, &execution_id, &working_dir).await;
+        Self::inject_notify_env(&mut env_vars, &execution_id, &self.helpers_dir).await;
 
         // 给脚本文件添加执行权限
         self.ensure_script_executable(&task.command, &working_dir).await;

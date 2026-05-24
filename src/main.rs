@@ -56,6 +56,11 @@ async fn main() -> Result<()> {
 
     // 配置
     let data_dir = PathBuf::from(std::env::var("DATA_DIR").unwrap_or_else(|_| "./data".into()));
+    let data_dir = if data_dir.is_absolute() {
+        data_dir
+    } else {
+        std::env::current_dir().unwrap_or_default().join(&data_dir)
+    };
     let database_url = format!("sqlite://{}/app.db", data_dir.display());
     let scripts_dir = data_dir.join("scripts");
     let port = std::env::var("PORT")
@@ -130,6 +135,7 @@ async fn main() -> Result<()> {
         config_service.clone(),
         Some(notification_service.clone()),
         token_registry,
+        data_dir.join("helpers"),
     ));
 
     script_service.init().await?;

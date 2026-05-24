@@ -669,7 +669,7 @@ const Tasks: React.FC = () => {
         );
 
         return (
-          <Space>
+          <Space size={4}>
             {isRunning ? (
               <Popconfirm
                 title="确定终止此任务吗？"
@@ -677,7 +677,7 @@ const Tasks: React.FC = () => {
               >
                 <Button
                   type="text"
-                  size="small"
+                  size="mini"
                   status="warning"
                   icon={<IconStop />}
                 >
@@ -687,7 +687,7 @@ const Tasks: React.FC = () => {
             ) : (
               <Button
                 type="text"
-                size="small"
+                size="mini"
                 icon={<IconPlayArrow />}
                 onClick={() => handleRun(record.id)}
               >
@@ -696,14 +696,14 @@ const Tasks: React.FC = () => {
             )}
             <Button
               type="text"
-              size="small"
+              size="mini"
               icon={<IconFile />}
               onClick={() => handleViewLog(record)}
             >
               {!isMobile && '日志'}
             </Button>
             <Dropdown droplist={droplist} position="bl">
-              <Button type="text" size="small" icon={<IconMore />} />
+              <Button type="text" size="mini" icon={<IconMore />} />
             </Dropdown>
           </Space>
         );
@@ -727,8 +727,9 @@ const Tasks: React.FC = () => {
           data={tasks}
           loading={loading}
           pagination={{ pageSize: 10 }}
-          scroll={{ x: isMobile ? 840 : 1200 }}
+          scroll={{ x: isMobile ? 840 : 1410 }}
           rowKey="id"
+          rowClassName={(record: Task) => (!record.enabled ? 'task-row-disabled' : '')}
         />
       </div>
     );
@@ -1033,6 +1034,10 @@ const Tasks: React.FC = () => {
         @keyframes spin {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
+        }
+        .task-row-disabled td {
+          background-color: #f0f0f0 !important;
+          color: rgba(0, 0, 0, 0.45) !important;
         }
       `}</style>
 

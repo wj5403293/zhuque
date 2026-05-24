@@ -146,12 +146,36 @@ export interface WebhookConfig {
   body_template: string;
 }
 
+export interface DingTalkConfig {
+  access_token: string;
+  secret?: string;
+}
+
+export interface FeishuConfig {
+  webhook_url: string;
+  sign_key?: string;
+}
+
+export interface BarkConfig {
+  server_url: string;
+  device_key: string;
+  sound?: string;
+  group?: string;
+}
+
+export interface NtfyConfig {
+  server_url: string;
+  topic: string;
+  token?: string;
+  priority: number;
+}
+
 export interface ChannelConfig {
   id: string;
   name: string;
   type: string;
   enabled: boolean;
-  config: TelegramConfig | PushPlusConfig | SmtpConfig | ResendConfig | WeComConfig | WebhookConfig | Record<string, unknown>;
+  config: TelegramConfig | PushPlusConfig | SmtpConfig | ResendConfig | WeComConfig | WebhookConfig | DingTalkConfig | FeishuConfig | BarkConfig | NtfyConfig | Record<string, unknown>;
 }
 
 export interface NotificationConfig {

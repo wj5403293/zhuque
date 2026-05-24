@@ -1,10 +1,13 @@
 use crate::models::config::{
-    ChannelConfig, NotificationConfig, PushPlusConfig, ResendConfig, SmtpConfig, TelegramConfig,
-    WeComConfig, WebhookConfig,
+    BarkConfig, ChannelConfig, DingTalkConfig, FeishuConfig, NotificationConfig, NtfyConfig,
+    PushPlusConfig, ResendConfig, SmtpConfig, TelegramConfig, WeComConfig, WebhookConfig,
 };
 use crate::models::{CreateSystemConfig, UpdateSystemConfig};
 use crate::services::ConfigService;
 use anyhow::{anyhow, Result};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use hmac::{Hmac, Mac};
+use sha2::Sha256;
 use lettre::{
     message::header::ContentType,
     transport::smtp::{
@@ -20,6 +23,7 @@ use tokio::sync::RwLock;
 use tracing::{error, info};
 use uuid;
 use chrono;
+use urlencoding;
 
 /// 正在运行的 execution_id -> task_id 映射，用于校验脚本通知 token
 pub type NotifyTokenRegistry = Arc<RwLock<HashMap<String, i64>>>;
@@ -270,6 +274,22 @@ impl NotificationService {
                 let cfg: WebhookConfig = serde_json::from_value(channel.config.clone())?;
                 self.send_webhook(&cfg, title, content).await
             }
+            "dingtalk" => {
+                let cfg: DingTalkConfig = serde_json::from_value(channel.config.clone())?;
+                self.send_dingtalk(&cfg, title, content).await
+            }
+            "feishu" => {
+                let cfg: FeishuConfig = serde_json::from_value(channel.config.clone())?;
+                self.send_feishu(&cfg, title, content).await
+            }
+            "bark" => {
+                let cfg: BarkConfig = serde_json::from_value(channel.config.clone())?;
+                self.send_bark(&cfg, title, content).await
+            }
+            "ntfy" => {
+                let cfg: NtfyConfig = serde_json::from_value(channel.config.clone())?;
+                self.send_ntfy(&cfg, title, content).await
+            }
             other => Err(anyhow!("Unknown channel type: {}", other)),
         }
     }
@@ -509,6 +529,177 @@ impl NotificationService {
             let status = res.status().as_u16();
             let body = res.text().await.unwrap_or_default();
             return Err(anyhow!("Webhook 请求失败 ({}): {}", status, &body[..body.len().min(200)]));
+        }
+        Ok(())
+    }
+
+    // ─── 钉钉机器人 ──────────────────────────────────────────────────────────
+
+    async fn send_dingtalk(&self, cfg: &DingTalkConfig, title: &str, content: &str) -> Result<()> {
+        if cfg.access_token.is_empty() {
+            return Err(anyhow!("钉钉: access_token 不能为空"));
+        }
+
+        let timestamp = chrono::Utc::now().timestamp_millis();
+        let mut url = format!(
+            "https://oapi.dingtalk.com/robot/send?access_token={}",
+            cfg.access_token
+        );
+
+        if let Some(secret) = &cfg.secret {
+            if !secret.is_empty() {
+                let string_to_sign = format!("{}\n{}", timestamp, secret);
+                let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes())
+                    .map_err(|e| anyhow!("钉钉签名初始化失败: {}", e))?;
+                mac.update(string_to_sign.as_bytes());
+                let sign = BASE64.encode(mac.finalize().into_bytes());
+                let sign_enc = urlencoding::encode(&sign).to_string();
+                url = format!("{}&timestamp={}&sign={}", url, timestamp, sign_enc);
+            }
+        }
+
+        let text = format!("{}\n{}", title, content);
+        let res = self
+            .http_client
+            .post(&url)
+            .json(&json!({
+                "msgtype": "text",
+                "text": { "content": text }
+            }))
+            .send()
+            .await?;
+
+        let response: serde_json::Value = res.json().await?;
+        let errcode = response["errcode"].as_i64().unwrap_or(-1);
+        if errcode != 0 {
+            return Err(anyhow!(
+                "钉钉错误 ({}): {}",
+                errcode,
+                response["errmsg"].as_str().unwrap_or("unknown")
+            ));
+        }
+        Ok(())
+    }
+
+    // ─── 飞书机器人 ───────────────────────────────────────────────────────────
+
+    async fn send_feishu(&self, cfg: &FeishuConfig, title: &str, content: &str) -> Result<()> {
+        if cfg.webhook_url.is_empty() {
+            return Err(anyhow!("飞书: webhook_url 不能为空"));
+        }
+
+        let timestamp = chrono::Utc::now().timestamp();
+        let mut payload = json!({
+            "msg_type": "post",
+            "content": {
+                "post": {
+                    "zh_cn": {
+                        "title": title,
+                        "content": [[{ "tag": "text", "text": content }]]
+                    }
+                }
+            }
+        });
+
+        if let Some(key) = &cfg.sign_key {
+            if !key.is_empty() {
+                let string_to_sign = format!("{}\n{}", timestamp, key);
+                let mut mac = Hmac::<Sha256>::new_from_slice(string_to_sign.as_bytes())
+                    .map_err(|e| anyhow!("飞书签名初始化失败: {}", e))?;
+                mac.update(b"");
+                let sign = BASE64.encode(mac.finalize().into_bytes());
+                payload["timestamp"] = json!(timestamp.to_string());
+                payload["sign"] = json!(sign);
+            }
+        }
+
+        let res = self
+            .http_client
+            .post(&cfg.webhook_url)
+            .json(&payload)
+            .send()
+            .await?;
+
+        let response: serde_json::Value = res.json().await?;
+        let code = response["code"].as_i64().unwrap_or(-1);
+        if code != 0 {
+            return Err(anyhow!(
+                "飞书错误 ({}): {}",
+                code,
+                response["msg"].as_str().unwrap_or("unknown")
+            ));
+        }
+        Ok(())
+    }
+
+    // ─── Bark ─────────────────────────────────────────────────────────────────
+
+    async fn send_bark(&self, cfg: &BarkConfig, title: &str, content: &str) -> Result<()> {
+        if cfg.server_url.is_empty() {
+            return Err(anyhow!("Bark: server_url 不能为空"));
+        }
+        if cfg.device_key.is_empty() {
+            return Err(anyhow!("Bark: device_key 不能为空"));
+        }
+
+        let url = format!("{}/push", cfg.server_url.trim_end_matches('/'));
+        let mut payload = json!({
+            "device_key": cfg.device_key,
+            "title": title,
+            "body": content
+        });
+
+        if let Some(s) = &cfg.sound  { if !s.is_empty() { payload["sound"] = json!(s); } }
+        if let Some(g) = &cfg.group  { if !g.is_empty() { payload["group"] = json!(g); } }
+
+        let res = self
+            .http_client
+            .post(&url)
+            .json(&payload)
+            .send()
+            .await?;
+
+        if !res.status().is_success() {
+            let status = res.status().as_u16();
+            let body = res.text().await.unwrap_or_default();
+            return Err(anyhow!("Bark 错误 ({}): {}", status, &body[..body.len().min(200)]));
+        }
+        Ok(())
+    }
+
+    // ─── ntfy ─────────────────────────────────────────────────────────────────
+
+    async fn send_ntfy(&self, cfg: &NtfyConfig, title: &str, content: &str) -> Result<()> {
+        if cfg.server_url.is_empty() {
+            return Err(anyhow!("ntfy: server_url 不能为空"));
+        }
+        if cfg.topic.is_empty() {
+            return Err(anyhow!("ntfy: topic 不能为空"));
+        }
+
+        let url = format!("{}/{}", cfg.server_url.trim_end_matches('/'), cfg.topic);
+        let mut req = self
+            .http_client
+            .post(&url)
+            .header("Title", title)
+            .header("Content-Type", "text/plain")
+            .body(content.to_string());
+
+        if let Some(token) = &cfg.token {
+            if !token.is_empty() {
+                req = req.header("Authorization", format!("Bearer {}", token));
+            }
+        }
+
+        if cfg.priority > 0 {
+            req = req.header("Priority", cfg.priority.to_string());
+        }
+
+        let res = req.send().await?;
+        if !res.status().is_success() {
+            let status = res.status().as_u16();
+            let body = res.text().await.unwrap_or_default();
+            return Err(anyhow!("ntfy 错误 ({}): {}", status, &body[..body.len().min(200)]));
         }
         Ok(())
     }

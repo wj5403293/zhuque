@@ -179,3 +179,32 @@ impl Default for WebhookConfig {
         }
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DingTalkConfig {
+    pub access_token: String,
+    pub secret: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct FeishuConfig {
+    pub webhook_url: String,
+    pub sign_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct BarkConfig {
+    pub server_url: String,
+    pub device_key: String,
+    pub sound: Option<String>,
+    pub group: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct NtfyConfig {
+    pub server_url: String,
+    pub topic: String,
+    pub token: Option<String>,
+    #[serde(default)]
+    pub priority: u8,
+}

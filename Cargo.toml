@@ -72,6 +72,12 @@ reqwest = { version = "0.12", features = ["rustls-tls", "stream", "json"] }
 # 邮件发送
 lettre = { version = "0.11", features = ["tokio1-rustls-tls", "builder", "smtp-transport"], default-features = false }
 
+# 签名/编码（钉钉、飞书）
+hmac = "0.12"
+sha2 = "0.10"
+base64 = "0.22"
+urlencoding = "2.1"
+
 # 终端 (仅非 Android 平台)
 [target.'cfg(not(target_os = "android"))'.dependencies]
 portable-pty = "0.8"

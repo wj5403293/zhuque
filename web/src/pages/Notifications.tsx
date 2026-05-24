@@ -46,12 +46,16 @@ const useMobile = () => {
 // ─── 渠道类型元信息 ────────────────────────────────────────────────────────────
 
 const CHANNEL_TYPES = [
-  { value: 'telegram',  label: 'Telegram',     color: 'blue'    },
-  { value: 'pushplus',  label: 'PushPlus',     color: 'green'   },
-  { value: 'wecom',     label: '企业微信机器人', color: 'arcoblue' },
-  { value: 'smtp',      label: 'SMTP 邮件',    color: 'orange'  },
-  { value: 'resend',    label: 'Resend',       color: 'purple'  },
-  { value: 'webhook',   label: 'Webhook',      color: 'gray'    },
+  { value: 'telegram',  label: 'Telegram',      color: 'blue'     },
+  { value: 'pushplus',  label: 'PushPlus',      color: 'green'    },
+  { value: 'wecom',     label: '企业微信',       color: 'arcoblue' },
+  { value: 'smtp',      label: 'SMTP 邮件',     color: 'orange'   },
+  { value: 'resend',    label: 'Resend',        color: 'purple'   },
+  { value: 'webhook',   label: 'Webhook',       color: 'gray'     },
+  { value: 'dingtalk',  label: '钉钉',          color: 'orangered'},
+  { value: 'feishu',    label: '飞书',          color: 'cyan'     },
+  { value: 'bark',      label: 'Bark',          color: 'lime'     },
+  { value: 'ntfy',      label: 'ntfy',          color: 'pinkpurple'},
 ];
 
 const typeLabel = (t: string) => CHANNEL_TYPES.find(c => c.value === t)?.label ?? t;
@@ -66,6 +70,10 @@ const defaults: Record<string, object> = {
   smtp:     { host: '', port: 465, username: '', password: '', from: '', to: [], use_tls: true },
   resend:   { api_key: '', from: '', to: [] },
   webhook:  { url: '', method: 'POST', headers: {}, body_template: '' },
+  dingtalk: { access_token: '', secret: '' },
+  feishu:   { webhook_url: '', sign_key: '' },
+  bark:     { server_url: '', device_key: '', sound: '', group: '' },
+  ntfy:     { server_url: '', topic: '', token: '', priority: 0 }
 };
 
 // ─── 渠道配置表单（按类型渲染字段）────────────────────────────────────────────
@@ -149,6 +157,74 @@ const ConfigForm: React.FC<ConfigFormProps> = ({ type, value, onChange, isMobile
       <FormItem label="Webhook URL" required>
         <Input placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..."
           value={value.webhook_url} onChange={v => set('webhook_url', v)} />
+      </FormItem>
+    </Form>
+  );
+
+  if (type === 'dingtalk') return (
+    <Form layout={layout} labelCol={lc} wrapperCol={wc}>
+      <FormItem label="Access Token" required>
+        <Input placeholder="钉钉机器人 access_token"
+          value={value.access_token} onChange={v => set('access_token', v)} />
+      </FormItem>
+      <FormItem label="签名密钥">
+        <Input placeholder="可选，开启安全设置后填写"
+          value={value.secret} onChange={v => set('secret', v)} />
+      </FormItem>
+    </Form>
+  );
+
+  if (type === 'feishu') return (
+    <Form layout={layout} labelCol={lc} wrapperCol={wc}>
+      <FormItem label="Webhook URL" required>
+        <Input placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/..."
+          value={value.webhook_url} onChange={v => set('webhook_url', v)} />
+      </FormItem>
+      <FormItem label="签名 Key">
+        <Input placeholder="可选，开启签名校验后填写"
+          value={value.sign_key} onChange={v => set('sign_key', v)} />
+      </FormItem>
+    </Form>
+  );
+
+  if (type === 'bark') return (
+    <Form layout={layout} labelCol={lc} wrapperCol={wc}>
+      <FormItem label="服务地址" required>
+        <Input placeholder="https://api.day.app"
+          value={value.server_url} onChange={v => set('server_url', v)} />
+      </FormItem>
+      <FormItem label="Device Key" required>
+        <Input placeholder="你的 Bark Device Key"
+          value={value.device_key} onChange={v => set('device_key', v)} />
+      </FormItem>
+      <FormItem label="铃声">
+        <Input placeholder="可选，如 minuet"
+          value={value.sound} onChange={v => set('sound', v)} />
+      </FormItem>
+      <FormItem label="分组">
+        <Input placeholder="可选，消息分组名称"
+          value={value.group} onChange={v => set('group', v)} />
+      </FormItem>
+    </Form>
+  );
+
+  if (type === 'ntfy') return (
+    <Form layout={layout} labelCol={lc} wrapperCol={wc}>
+      <FormItem label="服务地址" required>
+        <Input placeholder="https://ntfy.sh"
+          value={value.server_url} onChange={v => set('server_url', v)} />
+      </FormItem>
+      <FormItem label="Topic" required>
+        <Input placeholder="你的 topic 名称"
+          value={value.topic} onChange={v => set('topic', v)} />
+      </FormItem>
+      <FormItem label="Token">
+        <Input placeholder="可选，私有服务器鉴权 token"
+          value={value.token} onChange={v => set('token', v)} />
+      </FormItem>
+      <FormItem label="优先级">
+        <InputNumber min={0} max={5} placeholder="0=默认 1=最低 5=最高"
+          value={value.priority} onChange={v => set('priority', v ?? 0)} />
       </FormItem>
     </Form>
   );

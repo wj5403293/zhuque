@@ -1,6 +1,7 @@
 use crate::models::config::{
     BarkConfig, ChannelConfig, DingTalkConfig, FeishuConfig, NotificationConfig, NtfyConfig,
-    PushPlusConfig, ResendConfig, SmtpConfig, TelegramConfig, WeComConfig, WebhookConfig,
+    PushPlusConfig, ResendConfig, SmtpConfig, TaskNotificationConfig, TelegramConfig, WeComConfig,
+    WebhookConfig,
 };
 use crate::models::{CreateSystemConfig, UpdateSystemConfig};
 use crate::services::ConfigService;
@@ -99,6 +100,7 @@ impl NotificationService {
         status: &str,
         duration_ms: i64,
         output_tail: &str,
+        task_notification: Option<TaskNotificationConfig>,
     ) {
         let config = match self.get_config().await {
             Ok(c) => c,
@@ -112,11 +114,30 @@ impl NotificationService {
             return;
         }
 
-        let should_notify = match status {
-            "success" => config.on_success,
-            "failed" => config.on_failure,
-            "killed" => config.on_killed,
-            _ => false,
+        // 判断是否应触发通知（任务级别覆盖全局触发条件）
+        let should_notify = if let Some(ref task_notif) = task_notification {
+            if task_notif.enabled {
+                match status {
+                    "success" => task_notif.on_success.unwrap_or(config.on_success),
+                    "failed"  => task_notif.on_failure.unwrap_or(config.on_failure),
+                    "killed"  => task_notif.on_killed.unwrap_or(config.on_killed),
+                    _ => false,
+                }
+            } else {
+                match status {
+                    "success" => config.on_success,
+                    "failed"  => config.on_failure,
+                    "killed"  => config.on_killed,
+                    _ => false,
+                }
+            }
+        } else {
+            match status {
+                "success" => config.on_success,
+                "failed"  => config.on_failure,
+                "killed"  => config.on_killed,
+                _ => false,
+            }
         };
 
         if !should_notify {
@@ -125,8 +146,8 @@ impl NotificationService {
 
         let (status_emoji, status_label) = match status {
             "success" => ("✅", "成功"),
-            "failed" => ("❌", "失败"),
-            "killed" => ("⚠️", "已终止"),
+            "failed"  => ("❌", "失败"),
+            "killed"  => ("⚠️", "已终止"),
             _ => ("ℹ️", status),
         };
 
@@ -145,9 +166,22 @@ impl NotificationService {
             )
         };
 
+        // 确定生效的通知渠道（任务级别覆盖全局渠道列表）
+        let effective_channel_ids: Option<&Vec<String>> = task_notification
+            .as_ref()
+            .filter(|n| n.enabled)
+            .and_then(|n| n.channel_ids.as_ref())
+            .filter(|ids| !ids.is_empty());
+
         for channel in &config.channels {
             if !channel.enabled {
                 continue;
+            }
+            // 如果任务级别指定了渠道 ID 列表，只使用其中的渠道
+            if let Some(ids) = effective_channel_ids {
+                if !ids.contains(&channel.id) {
+                    continue;
+                }
             }
             if let Err(e) = self.send_to_channel(channel, &title, &content).await {
                 error!(

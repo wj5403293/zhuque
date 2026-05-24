@@ -1,4 +1,5 @@
 use crate::models::Task;
+use crate::models::config::TaskNotificationConfig;
 use crate::services::{EnvService, ConfigService, NotificationService, NotifyTokenRegistry};
 use crate::utils::python_detector::PYTHON_CMD;
 use anyhow::{anyhow, Result};
@@ -739,9 +740,11 @@ module.exports.default = sendNotify;
             let notif_svc = notif_svc.clone();
             let task_name = task.name.clone();
             let status = status.to_string();
+            let task_notification = task.notification.as_deref()
+                .and_then(|s| serde_json::from_str::<TaskNotificationConfig>(s).ok());
             tokio::spawn(async move {
                 notif_svc
-                    .notify_task_result(&task_name, &status, duration, &output_tail)
+                    .notify_task_result(&task_name, &status, duration, &output_tail, task_notification)
                     .await;
             });
         }

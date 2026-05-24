@@ -208,3 +208,23 @@ pub struct NtfyConfig {
     #[serde(default)]
     pub priority: u8,
 }
+
+// ─── 任务级通知配置（可覆盖全局通知配置）─────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskNotificationConfig {
+    /// 是否启用任务级别覆盖
+    pub enabled: bool,
+    /// 覆盖：成功时是否通知（None = 跟随全局）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub on_success: Option<bool>,
+    /// 覆盖：失败时是否通知（None = 跟随全局）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub on_failure: Option<bool>,
+    /// 覆盖：终止时是否通知（None = 跟随全局）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub on_killed: Option<bool>,
+    /// 覆盖：指定生效的渠道 ID 列表（None 或空 = 使用全局所有已启用渠道）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel_ids: Option<Vec<String>>,
+}

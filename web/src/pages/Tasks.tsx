@@ -20,12 +20,14 @@ import {
   Menu,
   Typography,
   Radio,
+  Checkbox,
 } from '@arco-design/web-react';
-import { IconPlus, IconPlayArrow, IconEdit, IconDelete, IconInfoCircle, IconStop, IconFile, IconMore, IconLink, IconPoweroff } from '@arco-design/web-react/icon';
+import { IconPlus, IconPlayArrow, IconEdit, IconDelete, IconInfoCircle, IconStop, IconFile, IconMore, IconLink, IconPoweroff, IconNotification } from '@arco-design/web-react/icon';
 import { taskApi } from '@/api/task';
 import { logApi } from '@/api/log';
+import { notificationApi } from '@/api/notification';
 import axios from 'axios';
-import type { Task } from '@/types';
+import type { Task, TaskNotificationConfig, ChannelConfig } from '@/types';
 
 const FormItem = Form.Item;
 const { Option } = Select;
@@ -99,6 +101,14 @@ const Tasks: React.FC = () => {
   const [webhookVisible, setWebhookVisible] = useState(false);
   const [webhookToken, setWebhookToken] = useState<string>('');
   const [currentWebhookTaskId, setCurrentWebhookTaskId] = useState<number | null>(null);
+
+  // 任务通知配置相关状态
+  const [taskNotifEnabled, setTaskNotifEnabled] = useState(false);
+  const [taskNotifOnSuccess, setTaskNotifOnSuccess] = useState<boolean>(false);
+  const [taskNotifOnFailure, setTaskNotifOnFailure] = useState<boolean>(true);
+  const [taskNotifOnKilled, setTaskNotifOnKilled] = useState<boolean>(true);
+  const [taskNotifChannelIds, setTaskNotifChannelIds] = useState<string[]>([]);
+  const [globalChannels, setGlobalChannels] = useState<ChannelConfig[]>([]);
 
   useEffect(() => {
     loadGroups();
@@ -234,6 +244,34 @@ const Tasks: React.FC = () => {
     }
   };
 
+  const loadGlobalChannels = async () => {
+    try {
+      const config = await notificationApi.getConfig();
+      setGlobalChannels(config.channels || []);
+    } catch (error) {
+      console.error('Failed to load notification channels:', error);
+    }
+  };
+
+  const resetNotifState = (notifJson?: string | null) => {
+    if (notifJson) {
+      try {
+        const notif: TaskNotificationConfig = JSON.parse(notifJson);
+        setTaskNotifEnabled(notif.enabled);
+        setTaskNotifOnSuccess(notif.on_success ?? false);
+        setTaskNotifOnFailure(notif.on_failure ?? true);
+        setTaskNotifOnKilled(notif.on_killed ?? true);
+        setTaskNotifChannelIds(notif.channel_ids ?? []);
+        return;
+      } catch { /* fallthrough */ }
+    }
+    setTaskNotifEnabled(false);
+    setTaskNotifOnSuccess(false);
+    setTaskNotifOnFailure(true);
+    setTaskNotifOnKilled(true);
+    setTaskNotifChannelIds([]);
+  };
+
   const showWebhookUrl = (taskId: number) => {
     setCurrentWebhookTaskId(taskId);
     setWebhookVisible(true);
@@ -298,21 +336,24 @@ const Tasks: React.FC = () => {
     form.setFieldsValue({
       type: 'cron',
       enabled: true,
-      cron: ['*/5 * * * *'], // 默认每5分钟（5字段格式）
+      cron: ['*/5 * * * *'],
     });
     setTaskEnvFormat('json');
+    resetNotifState(null);
+    loadGlobalChannels();
     setVisible(true);
   };
 
   const handleEdit = (task: Task) => {
     setEditingTask(task);
-    // 确保 cron 是数组格式
     const formData = {
       ...task,
       cron: Array.isArray(task.cron) ? task.cron : [task.cron],
     };
     form.setFieldsValue(formData);
     setTaskEnvFormat('json');
+    resetNotifState(task.notification);
+    loadGlobalChannels();
     setVisible(true);
   };
 
@@ -327,6 +368,18 @@ const Tasks: React.FC = () => {
       if (values.env && taskEnvFormat === 'dotenv') {
         values.env = parseDotEnvToJson(values.env);
       }
+
+      // 构造任务级通知配置 JSON
+      const notifConfig: TaskNotificationConfig = taskNotifEnabled
+        ? {
+            enabled: true,
+            on_success: taskNotifOnSuccess,
+            on_failure: taskNotifOnFailure,
+            on_killed: taskNotifOnKilled,
+            channel_ids: taskNotifChannelIds.length > 0 ? taskNotifChannelIds : undefined,
+          }
+        : { enabled: false };
+      values.notification = JSON.stringify(notifConfig);
 
       if (editingTask) {
         const updated = await taskApi.update(editingTask.id, values);
@@ -533,6 +586,7 @@ const Tasks: React.FC = () => {
       title: '任务名称',
       dataIndex: 'name',
       width: isMobile ? 100 : 200,
+      render: (name: string) => <span>{name}</span>,
     },
     {
       title: '类型',
@@ -972,6 +1026,102 @@ const Tasks: React.FC = () => {
                   style={{ fontFamily: 'monospace' }}
                 />
               </FormItem>
+            </TabPane>
+
+            <TabPane key="notification" title={
+              <Space size={4}>
+                <IconNotification />
+                <span>通知配置</span>
+              </Space>
+            }>
+              <div style={{ marginBottom: 16 }}>
+                <Space align="center">
+                  <span style={{ fontWeight: 500 }}>覆盖全局通知配置</span>
+                  <Switch
+                    checked={taskNotifEnabled}
+                    onChange={(v) => setTaskNotifEnabled(v)}
+                  />
+                </Space>
+                {!taskNotifEnabled && (
+                  <p style={{ color: 'var(--color-text-3)', marginTop: 8, marginBottom: 0, fontSize: 13 }}>
+                    当前使用「通知管理」中的全局配置，启用后可为本任务单独设置触发条件与生效渠道。
+                  </p>
+                )}
+              </div>
+
+              {taskNotifEnabled && (
+                <>
+                  <Divider style={{ margin: '0 0 16px' }} />
+
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontWeight: 500, marginBottom: 8 }}>触发条件</div>
+                    <div style={{ color: 'var(--color-text-3)', fontSize: 12, marginBottom: 10 }}>
+                      勾选的事件将触发通知，覆盖全局设置。
+                    </div>
+                    <Space size="large">
+                      <Checkbox
+                        checked={taskNotifOnSuccess}
+                        onChange={(v) => setTaskNotifOnSuccess(v)}
+                      >
+                        ✅ 执行成功时
+                      </Checkbox>
+                      <Checkbox
+                        checked={taskNotifOnFailure}
+                        onChange={(v) => setTaskNotifOnFailure(v)}
+                      >
+                        ❌ 执行失败时
+                      </Checkbox>
+                      <Checkbox
+                        checked={taskNotifOnKilled}
+                        onChange={(v) => setTaskNotifOnKilled(v)}
+                      >
+                        ⚠️ 被终止时
+                      </Checkbox>
+                    </Space>
+                  </div>
+
+                  <Divider style={{ margin: '0 0 16px' }} />
+
+                  <div>
+                    <div style={{ fontWeight: 500, marginBottom: 8 }}>生效渠道</div>
+                    <div style={{ color: 'var(--color-text-3)', fontSize: 12, marginBottom: 10 }}>
+                      从全局已配置渠道中选择本任务使用的渠道。留空则使用全局所有已启用渠道。
+                    </div>
+                    {globalChannels.length > 0 ? (
+                      <Select
+                        mode="multiple"
+                        value={taskNotifChannelIds}
+                        onChange={(v) => setTaskNotifChannelIds(v)}
+                        placeholder="留空使用全部已启用渠道"
+                        style={{ width: '100%' }}
+                        allowClear
+                      >
+                        {globalChannels.map(ch => (
+                          <Select.Option key={ch.id} value={ch.id}>
+                            <Space size={6}>
+                              <Tag
+                                size="small"
+                                color={ch.enabled ? 'arcoblue' : 'gray'}
+                                style={{ margin: 0 }}
+                              >
+                                {ch.type}
+                              </Tag>
+                              <span>{ch.name || ch.type}</span>
+                              {!ch.enabled && (
+                                <span style={{ color: 'var(--color-text-3)', fontSize: 11 }}>(已全局禁用)</span>
+                              )}
+                            </Space>
+                          </Select.Option>
+                        ))}
+                      </Select>
+                    ) : (
+                      <span style={{ color: 'var(--color-text-3)', fontSize: 13 }}>
+                        暂未配置通知渠道，请前往「通知管理」添加渠道后再使用此功能。
+                      </span>
+                    )}
+                  </div>
+                </>
+              )}
             </TabPane>
           </Tabs>
         </Form>

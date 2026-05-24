@@ -219,6 +219,12 @@ pub async fn init_db(database_url: &str) -> Result<SqlitePool> {
         .await
         .ok(); // 忽略错误，字段可能已存在
 
+    // 数据库迁移：添加 notification 字段到 tasks 表（任务级通知配置）
+    sqlx::query("ALTER TABLE tasks ADD COLUMN notification TEXT")
+        .execute(&pool)
+        .await
+        .ok(); // 忽略错误，字段可能已存在
+
     // 数据库迁移：添加 duration 字段到 logs 表
     sqlx::query("ALTER TABLE logs ADD COLUMN duration INTEGER")
         .execute(&pool)

@@ -29,6 +29,7 @@ pub struct Task {
     pub post_command: Option<String>,
     pub group_id: Option<i64>,
     pub working_dir: Option<String>, // 自定义工作目录
+    pub notification: Option<String>, // JSON 格式的任务级通知配置（TaskNotificationConfig）
     pub last_run_at: Option<DateTime<Utc>>,
     pub last_run_duration: Option<i64>, // 毫秒
     pub next_run_at: Option<DateTime<Utc>>,
@@ -56,7 +57,8 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for Task {
             pre_command: row.try_get("pre_command")?,
             post_command: row.try_get("post_command")?,
             group_id: row.try_get("group_id")?,
-            working_dir: row.try_get("working_dir").ok(),
+            working_dir: row.try_get("working_dir").ok().flatten(),
+            notification: row.try_get("notification").ok().flatten(),
             last_run_at: row.try_get("last_run_at")?,
             last_run_duration: row.try_get("last_run_duration")?,
             next_run_at: row.try_get("next_run_at")?,
@@ -79,6 +81,7 @@ pub struct CreateTask {
     pub post_command: Option<String>,
     pub group_id: Option<i64>,
     pub working_dir: Option<String>,
+    pub notification: Option<String>, // JSON 格式的任务级通知配置
 }
 
 // 用于接收前端输入的 cron，支持字符串或数组
@@ -111,6 +114,7 @@ pub struct UpdateTask {
     pub post_command: Option<String>,
     pub group_id: Option<i64>,
     pub working_dir: Option<String>,
+    pub notification: Option<String>, // JSON 格式的任务级通知配置
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]

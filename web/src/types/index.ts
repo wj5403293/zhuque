@@ -11,6 +11,7 @@ export interface Task {
   post_command?: string;
   group_id?: number;
   working_dir?: string;
+  notification?: string | null; // JSON 序列化的 TaskNotificationConfig
   last_run_at?: string;
   last_run_duration?: number;
   next_run_at?: string;
@@ -190,4 +191,19 @@ export interface NotificationConfig {
 export interface TestChannelRequest {
   channel_type: string;
   config: Record<string, unknown>;
+}
+
+// ─── 任务级通知配置（覆盖全局通知管理）────────────────────────────────────────
+
+export interface TaskNotificationConfig {
+  /** 是否启用任务级别覆盖 */
+  enabled: boolean;
+  /** 覆盖：成功时是否通知（undefined = 跟随全局） */
+  on_success?: boolean;
+  /** 覆盖：失败时是否通知（undefined = 跟随全局） */
+  on_failure?: boolean;
+  /** 覆盖：终止时是否通知（undefined = 跟随全局） */
+  on_killed?: boolean;
+  /** 覆盖：指定生效的渠道 ID 列表（undefined 或空数组 = 使用全局所有已启用渠道） */
+  channel_ids?: string[];
 }

@@ -144,3 +144,27 @@ pub struct ResendConfig {
 pub struct WeComConfig {
     pub webhook_url: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhookConfig {
+    pub url: String,
+    #[serde(default = "default_method")]
+    pub method: String,
+    #[serde(default)]
+    pub headers: std::collections::HashMap<String, String>,
+    #[serde(default)]
+    pub body_template: String,
+}
+
+fn default_method() -> String { "POST".to_string() }
+
+impl Default for WebhookConfig {
+    fn default() -> Self {
+        Self {
+            url: String::new(),
+            method: "POST".to_string(),
+            headers: std::collections::HashMap::new(),
+            body_template: String::new(),
+        }
+    }
+}

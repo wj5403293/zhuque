@@ -139,10 +139,17 @@ export interface WeComConfig {
   webhook_url: string;
 }
 
+export interface WebhookConfig {
+  url: string;
+  method: string;
+  headers: Record<string, string>;
+  body_template: string;
+}
+
 export interface ChannelConfig {
   type: string;
   enabled: boolean;
-  config: TelegramConfig | PushPlusConfig | SmtpConfig | ResendConfig | WeComConfig | Record<string, unknown>;
+  config: TelegramConfig | PushPlusConfig | SmtpConfig | ResendConfig | WeComConfig | WebhookConfig | Record<string, unknown>;
 }
 
 export interface NotificationConfig {

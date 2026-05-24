@@ -4,6 +4,7 @@ import {
   Collapse,
   Form,
   Input,
+  Select,
   Switch,
   Button,
   Space,
@@ -14,7 +15,7 @@ import {
   Spin,
   Tag,
 } from '@arco-design/web-react';
-import { IconSend, IconSave } from '@arco-design/web-react/icon';
+import { IconSend, IconSave, IconPlus, IconDelete } from '@arco-design/web-react/icon';
 import { notificationApi } from '@/api/notification';
 import type {
   NotificationConfig,
@@ -24,6 +25,7 @@ import type {
   SmtpConfig,
   ResendConfig,
   WeComConfig,
+  WebhookConfig,
 } from '@/types';
 
 const { Text } = Typography;
@@ -49,6 +51,7 @@ const defaultPushPlus = (): PushPlusConfig => ({ token: '', topic: '' });
 const defaultSmtp     = (): SmtpConfig     => ({ host: '', port: 465, username: '', password: '', from: '', to: [], use_tls: true });
 const defaultResend   = (): ResendConfig   => ({ api_key: '', from: '', to: [] });
 const defaultWeCom    = (): WeComConfig    => ({ webhook_url: '' });
+const defaultWebhook   = (): WebhookConfig => ({ url: '', method: 'POST', headers: {}, body_template: '' });
 
 const getCh = <T,>(channels: ChannelConfig[], type: string, def: () => T): T => {
   const ch = channels.find((c) => c.type === type);
@@ -131,6 +134,7 @@ const Notifications: React.FC = () => {
   const [smtpOn, setSmtpOn] = useState(false);
   const [resOn,  setResOn]  = useState(false);
   const [wcOn,   setWcOn]   = useState(false);
+  const [whOn,    setWhOn]    = useState(false);
 
   // 渠道配置
   const [tg,    setTg]    = useState<TelegramConfig>(defaultTelegram());
@@ -138,6 +142,8 @@ const Notifications: React.FC = () => {
   const [smtp,  setSmtp]  = useState<SmtpConfig>(defaultSmtp());
   const [res,   setRes]   = useState<ResendConfig>(defaultResend());
   const [wecom, setWecom] = useState<WeComConfig>(defaultWeCom());
+  const [wh,    setWh]    = useState<WebhookConfig>(defaultWebhook());
+  const [whHeaders, setWhHeaders] = useState<Array<{id: number; key: string; value: string}>>([]);
 
   // 多收件人：用逗号分隔字符串维护，保存时 split
   const [smtpTo, setSmtpTo] = useState('');
@@ -173,6 +179,14 @@ const Notifications: React.FC = () => {
       setWecom(wcCfg);
       setSmtpTo(smtpCfg.to.join(', '));
       setResTo(resCfg.to.join(', '));
+
+      const whCh = cfg.channels.find(c => c.type === 'webhook');
+      if (whCh) {
+        setWhOn(whCh.enabled);
+        const whCfg = whCh.config as WebhookConfig;
+        setWh({ url: whCfg.url || '', method: whCfg.method || 'POST', headers: {}, body_template: whCfg.body_template || '' });
+        setWhHeaders(Object.entries(whCfg.headers || {}).map(([k, v], i) => ({ id: i, key: k, value: v })));
+      }
     } catch {
       Message.error('加载通知配置失败');
     } finally {
@@ -193,6 +207,7 @@ const Notifications: React.FC = () => {
       { type: 'smtp',     enabled: smtpOn, config: { ...smtp, to: toList(smtpTo) } },
       { type: 'resend',   enabled: resOn,  config: { ...res,  to: toList(resTo)  } },
       { type: 'wecom',    enabled: wcOn,   config: wecom },
+      { type: 'webhook', enabled: whOn, config: { ...wh, headers: Object.fromEntries(whHeaders.filter(h => h.key).map(h => [h.key, h.value])) } as unknown as Record<string, unknown> },
     ],
   });
 
@@ -324,6 +339,84 @@ const Notifications: React.FC = () => {
                     onChange={(v) => setWecom({ webhook_url: v })}
                   />
                 </FormItem>
+              </Form>
+            </CollapseItem>
+
+            {/* ── Webhook ── */}
+            <CollapseItem
+              name="webhook"
+              header={
+                <ChannelHeader
+                  label="自定义 Webhook"
+                  enabled={whOn}
+                  testing={testing === 'webhook'}
+                  onToggle={setWhOn}
+                  onTest={() => handleTest('webhook', { ...wh, headers: (() => { const m: Record<string,string> = {}; whHeaders.forEach(h => { if(h.key) m[h.key]=h.value; }); return m; })() } as unknown as Record<string, unknown>)}
+                />
+              }
+            >
+              <Form layout={formLayout} labelCol={labelCol} wrapperCol={wrapperCol}>
+                <FormItem label="请求方式">
+                  <Select
+                    value={wh.method}
+                    onChange={(v) => setWh({ ...wh, method: v })}
+                    options={['GET','POST','PUT','PATCH'].map(m => ({ label: m, value: m }))}
+                    style={{ width: isMobile ? '100%' : 160 }}
+                  />
+                </FormItem>
+                <FormItem label="URL" required>
+                  <Input
+                    placeholder="https://example.com/webhook"
+                    value={wh.url}
+                    onChange={(v) => setWh({ ...wh, url: v })}
+                  />
+                </FormItem>
+                <FormItem label="自定义 Headers">
+                  <Space direction="vertical" style={{ width: '100%' }} size={6}>
+                    {whHeaders.map((row) => (
+                      <Space key={row.id} style={{ width: '100%', flexWrap: 'nowrap' as const }} size={6}>
+                        <Input
+                          placeholder="Header 名"
+                          value={row.key}
+                          style={{ flex: 1, minWidth: 0 }}
+                          onChange={(v) => setWhHeaders(prev => prev.map(h => h.id === row.id ? { ...h, key: v } : h))}
+                        />
+                        <Input
+                          placeholder="值"
+                          value={row.value}
+                          style={{ flex: 1, minWidth: 0 }}
+                          onChange={(v) => setWhHeaders(prev => prev.map(h => h.id === row.id ? { ...h, value: v } : h))}
+                        />
+                        <Button
+                          icon={<IconDelete />}
+                          size="mini"
+                          status="danger"
+                          type="text"
+                          onClick={() => setWhHeaders(prev => prev.filter(h => h.id !== row.id))}
+                        />
+                      </Space>
+                    ))}
+                    <Button
+                      icon={<IconPlus />}
+                      size="small"
+                      type="dashed"
+                      onClick={() => setWhHeaders(prev => [...prev, { id: Date.now(), key: '', value: '' }])}
+                    >
+                      添加 Header
+                    </Button>
+                  </Space>
+                </FormItem>
+                {wh.method !== 'GET' && (
+                  <FormItem label="Body 模板" style={{ marginBottom: 0 }}>
+                    <Input.TextArea
+                      placeholder={'留空则发送默认 JSON：\n{"title":"{title}","content":"{content}"}\n\n可用变量：{title}、{content}'}
+                      value={wh.body_template}
+                      onChange={(v) => setWh({ ...wh, body_template: v })}
+                      autoSize={{ minRows: 3, maxRows: 8 }}
+                      style={{ fontFamily: 'monospace', fontSize: 12 }}
+                    />
+                  </FormItem>
+                )}
               </Form>
             </CollapseItem>
 

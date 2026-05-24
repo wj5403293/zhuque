@@ -1,6 +1,6 @@
 use crate::models::config::{
     ChannelConfig, NotificationConfig, PushPlusConfig, ResendConfig, SmtpConfig, TelegramConfig,
-    WeComConfig,
+    WeComConfig, WebhookConfig,
 };
 use crate::models::{CreateSystemConfig, UpdateSystemConfig};
 use crate::services::ConfigService;
@@ -235,6 +235,10 @@ impl NotificationService {
                 let cfg: WeComConfig = serde_json::from_value(channel.config.clone())?;
                 self.send_wecom(&cfg, title, content).await
             }
+            "webhook" => {
+                let cfg: WebhookConfig = serde_json::from_value(channel.config.clone())?;
+                self.send_webhook(&cfg, title, content).await
+            }
             other => Err(anyhow!("Unknown channel type: {}", other)),
         }
     }
@@ -433,6 +437,47 @@ impl NotificationService {
         if !res.status().is_success() {
             let body = res.text().await.unwrap_or_default();
             return Err(anyhow!("Resend API 错误: {}", body));
+        }
+        Ok(())
+    }
+
+    async fn send_webhook(&self, cfg: &WebhookConfig, title: &str, content: &str) -> Result<()> {
+        if cfg.url.is_empty() {
+            return Err(anyhow!("Webhook: url 不能为空"));
+        }
+
+        let method = cfg.method.to_uppercase();
+        let mut req = match method.as_str() {
+            "GET"   => self.http_client.get(&cfg.url),
+            "POST"  => self.http_client.post(&cfg.url),
+            "PUT"   => self.http_client.put(&cfg.url),
+            "PATCH" => self.http_client.patch(&cfg.url),
+            other   => return Err(anyhow!("Webhook: 不支持的 method: {}", other)),
+        };
+
+        for (k, v) in &cfg.headers {
+            req = req.header(k.as_str(), v.as_str());
+        }
+
+        if method != "GET" {
+            let body = if cfg.body_template.is_empty() {
+                serde_json::to_string(&json!({ "title": title, "content": content }))?
+            } else {
+                cfg.body_template
+                    .replace("{title}", title)
+                    .replace("{content}", content)
+            };
+            let content_type = cfg.headers.get("Content-Type")
+                .map(|s| s.as_str())
+                .unwrap_or("application/json");
+            req = req.header("Content-Type", content_type).body(body);
+        }
+
+        let res = req.send().await?;
+        if !res.status().is_success() {
+            let status = res.status().as_u16();
+            let body = res.text().await.unwrap_or_default();
+            return Err(anyhow!("Webhook 请求失败 ({}): {}", status, &body[..body.len().min(200)]));
         }
         Ok(())
     }

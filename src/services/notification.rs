@@ -18,6 +18,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{error, info};
+use uuid;
 
 /// 正在运行的 execution_id -> task_id 映射，用于校验脚本通知 token
 pub type NotifyTokenRegistry = Arc<RwLock<HashMap<String, i64>>>;
@@ -194,6 +195,8 @@ impl NotificationService {
         config_value: serde_json::Value,
     ) -> Result<()> {
         let channel = ChannelConfig {
+            id: uuid::Uuid::new_v4().to_string(),
+            name: "test".to_string(),
             channel_type: channel_type.to_string(),
             enabled: true,
             config: config_value,

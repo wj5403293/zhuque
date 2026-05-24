@@ -103,10 +103,18 @@ impl Default for NotificationConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChannelConfig {
+    #[serde(default = "new_uuid")]
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
     #[serde(rename = "type")]
     pub channel_type: String,
     pub enabled: bool,
     pub config: serde_json::Value,
+}
+
+fn new_uuid() -> String {
+    uuid::Uuid::new_v4().to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

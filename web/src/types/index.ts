@@ -147,6 +147,8 @@ export interface WebhookConfig {
 }
 
 export interface ChannelConfig {
+  id: string;
+  name: string;
   type: string;
   enabled: boolean;
   config: TelegramConfig | PushPlusConfig | SmtpConfig | ResendConfig | WeComConfig | WebhookConfig | Record<string, unknown>;

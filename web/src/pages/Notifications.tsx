@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
   Card,
-  Collapse,
   Form,
   Input,
   Select,
@@ -9,109 +8,261 @@ import {
   Button,
   Space,
   Message,
+  Modal,
   Divider,
   Typography,
   InputNumber,
   Spin,
   Tag,
+  Popconfirm,
+  Empty,
 } from '@arco-design/web-react';
-import { IconSend, IconSave, IconPlus, IconDelete } from '@arco-design/web-react/icon';
+import {
+  IconPlus,
+  IconEdit,
+  IconDelete,
+  IconSend,
+  IconSave,
+} from '@arco-design/web-react/icon';
 import { notificationApi } from '@/api/notification';
-import type {
-  NotificationConfig,
-  ChannelConfig,
-  TelegramConfig,
-  PushPlusConfig,
-  SmtpConfig,
-  ResendConfig,
-  WeComConfig,
-  WebhookConfig,
-} from '@/types';
+import type { NotificationConfig, ChannelConfig } from '@/types';
 
 const { Text } = Typography;
 const FormItem = Form.Item;
-const CollapseItem = Collapse.Item;
+const Option = Select.Option;
 
-// ─── 响应式钩子 ───────────────────────────────────────────────────────────────
+// ─── 响应式 ───────────────────────────────────────────────────────────────────
 
 const useMobile = () => {
   const [mobile, setMobile] = useState(() => window.innerWidth < 640);
   useEffect(() => {
-    const handler = () => setMobile(window.innerWidth < 640);
-    window.addEventListener('resize', handler);
-    return () => window.removeEventListener('resize', handler);
+    const h = () => setMobile(window.innerWidth < 640);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
   }, []);
   return mobile;
 };
 
-// ─── 默认空配置 ───────────────────────────────────────────────────────────────
+// ─── 渠道类型元信息 ────────────────────────────────────────────────────────────
 
-const defaultTelegram = (): TelegramConfig => ({ bot_token: '', chat_id: '', proxy: '' });
-const defaultPushPlus = (): PushPlusConfig => ({ token: '', topic: '' });
-const defaultSmtp     = (): SmtpConfig     => ({ host: '', port: 465, username: '', password: '', from: '', to: [], use_tls: true });
-const defaultResend   = (): ResendConfig   => ({ api_key: '', from: '', to: [] });
-const defaultWeCom    = (): WeComConfig    => ({ webhook_url: '' });
-const defaultWebhook   = (): WebhookConfig => ({ url: '', method: 'POST', headers: {}, body_template: '' });
+const CHANNEL_TYPES = [
+  { value: 'telegram',  label: 'Telegram',     color: 'blue'    },
+  { value: 'pushplus',  label: 'PushPlus',     color: 'green'   },
+  { value: 'wecom',     label: '企业微信机器人', color: 'arcoblue' },
+  { value: 'smtp',      label: 'SMTP 邮件',    color: 'orange'  },
+  { value: 'resend',    label: 'Resend',       color: 'purple'  },
+  { value: 'webhook',   label: 'Webhook',      color: 'gray'    },
+];
 
-const getCh = <T,>(channels: ChannelConfig[], type: string, def: () => T): T => {
-  const ch = channels.find((c) => c.type === type);
-  return ch ? (ch.config as T) : def();
+const typeLabel = (t: string) => CHANNEL_TYPES.find(c => c.value === t)?.label ?? t;
+const typeColor = (t: string) => CHANNEL_TYPES.find(c => c.value === t)?.color ?? 'gray';
+
+// ─── 各渠道默认配置 ────────────────────────────────────────────────────────────
+
+const defaults: Record<string, object> = {
+  telegram: { bot_token: '', chat_id: '', proxy: '' },
+  pushplus: { token: '', topic: '' },
+  wecom:    { webhook_url: '' },
+  smtp:     { host: '', port: 465, username: '', password: '', from: '', to: [], use_tls: true },
+  resend:   { api_key: '', from: '', to: [] },
+  webhook:  { url: '', method: 'POST', headers: {}, body_template: '' },
 };
-const getChEnabled = (channels: ChannelConfig[], type: string) =>
-  channels.find((c) => c.type === type)?.enabled ?? false;
 
-// ─── 状态标签 ─────────────────────────────────────────────────────────────────
+// ─── 渠道配置表单（按类型渲染字段）────────────────────────────────────────────
 
-const StatusTag: React.FC<{ enabled: boolean }> = ({ enabled }) =>
-  enabled
-    ? <Tag color="green" size="small">已启用</Tag>
-    : <Tag color="gray"  size="small">未启用</Tag>;
-
-// ─── 渠道折叠面板 Header（移动端自动换行）────────────────────────────────────
-
-interface ChannelHeaderProps {
-  label: string;
-  enabled: boolean;
-  testing: boolean;
-  onToggle: (v: boolean) => void;
-  onTest: () => void;
+interface ConfigFormProps {
+  type: string;
+  value: Record<string, any>;
+  onChange: (v: Record<string, any>) => void;
+  isMobile: boolean;
 }
 
-const ChannelHeader: React.FC<ChannelHeaderProps> = ({ label, enabled, testing, onToggle, onTest }) => (
-  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 12px', minWidth: 0 }}>
-    {/* 左侧：名称 + 状态 */}
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: '1 1 auto' }}>
-      <span style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>{label}</span>
-      <StatusTag enabled={enabled} />
-    </div>
-    {/* 右侧：开关 + 测试（点击阻止冒泡，防止触发折叠） */}
-    <span
-      style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '0 0 auto' }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <Switch size="small" checked={enabled} onChange={onToggle} />
-      <Button size="mini" type="outline" icon={<IconSend />} loading={testing} onClick={onTest}>
-        测试
-      </Button>
-    </span>
-  </div>
-);
+type HeaderRow = { id: number; key: string; value: string };
 
-// ─── 代码块 ───────────────────────────────────────────────────────────────────
+const ConfigForm: React.FC<ConfigFormProps> = ({ type, value, onChange, isMobile }) => {
+  const layout  = isMobile ? 'vertical' : 'horizontal';
+  const lc      = isMobile ? undefined : { span: 7 };
+  const wc      = isMobile ? undefined : { span: 17 };
+  const set     = (k: string, v: any) => onChange({ ...value, [k]: v });
 
-const CodeBlock: React.FC<{ code: string }> = ({ code }) => (
-  <pre style={{
-    background: 'var(--color-fill-2)',
-    padding: '8px 12px',
-    borderRadius: 4,
-    fontSize: 12,
-    margin: 0,
-    overflowX: 'auto',   // 移动端横向滚动
-    whiteSpace: 'pre',
-  }}>
-    {code}
-  </pre>
-);
+  // webhook headers 本地状态
+  const [headerRows, setHeaderRows] = useState<HeaderRow[]>(() => {
+    const h = value.headers ?? {};
+    return Object.entries(h).map(([k, v], i) => ({ id: i, key: k, value: String(v) }));
+  });
+
+  const syncHeaders = (rows: HeaderRow[]) => {
+    const h: Record<string, string> = {};
+    rows.filter(r => r.key).forEach(r => { h[r.key] = r.value; });
+    onChange({ ...value, headers: h });
+  };
+
+  const addHeader = () => {
+    const rows = [...headerRows, { id: Date.now(), key: '', value: '' }];
+    setHeaderRows(rows);
+  };
+
+  const removeHeader = (id: number) => {
+    const rows = headerRows.filter(r => r.id !== id);
+    setHeaderRows(rows);
+    syncHeaders(rows);
+  };
+
+  const updateHeader = (id: number, field: 'key' | 'value', v: string) => {
+    const rows = headerRows.map(r => r.id === id ? { ...r, [field]: v } : r);
+    setHeaderRows(rows);
+    syncHeaders(rows);
+  };
+
+  if (type === 'telegram') return (
+    <Form layout={layout} labelCol={lc} wrapperCol={wc}>
+      <FormItem label="Bot Token" required>
+        <Input placeholder="110201543:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw"
+          value={value.bot_token} onChange={v => set('bot_token', v)} />
+      </FormItem>
+      <FormItem label="Chat ID" required>
+        <Input placeholder="-1001234567890 或个人数字 ID"
+          value={value.chat_id} onChange={v => set('chat_id', v)} />
+      </FormItem>
+      <FormItem label="代理地址">
+        <Input placeholder="http://127.0.0.1:7890（可选）"
+          value={value.proxy} onChange={v => set('proxy', v)} />
+      </FormItem>
+    </Form>
+  );
+
+  if (type === 'pushplus') return (
+    <Form layout={layout} labelCol={lc} wrapperCol={wc}>
+      <FormItem label="Token" required>
+        <Input placeholder="PushPlus 用户 Token"
+          value={value.token} onChange={v => set('token', v)} />
+      </FormItem>
+      <FormItem label="群组编码">
+        <Input placeholder="不填则发给自己（可选）"
+          value={value.topic} onChange={v => set('topic', v)} />
+      </FormItem>
+    </Form>
+  );
+
+  if (type === 'wecom') return (
+    <Form layout={layout} labelCol={lc} wrapperCol={wc}>
+      <FormItem label="Webhook URL" required>
+        <Input placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..."
+          value={value.webhook_url} onChange={v => set('webhook_url', v)} />
+      </FormItem>
+    </Form>
+  );
+
+  if (type === 'smtp') return (
+    <Form layout={layout} labelCol={lc} wrapperCol={wc}>
+      {isMobile ? (
+        <>
+          <FormItem label="SMTP 服务器" required>
+            <Input placeholder="smtp.gmail.com" value={value.host} onChange={v => set('host', v)} />
+          </FormItem>
+          <FormItem label="端口">
+            <InputNumber min={1} max={65535} value={value.port} onChange={v => set('port', v)} style={{ width: '100%' }} />
+          </FormItem>
+        </>
+      ) : (
+        <FormItem label="服务器 / 端口" required>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Input placeholder="smtp.gmail.com" value={value.host} onChange={v => set('host', v)} style={{ flex: 1 }} />
+            <InputNumber min={1} max={65535} value={value.port} onChange={v => set('port', v)} style={{ width: 90 }} />
+          </div>
+        </FormItem>
+      )}
+      <FormItem label="用户名" required>
+        <Input value={value.username} onChange={v => set('username', v)} />
+      </FormItem>
+      <FormItem label="密码" required>
+        <Input.Password value={value.password} onChange={v => set('password', v)} />
+      </FormItem>
+      <FormItem label="发件人" required>
+        <Input placeholder="no-reply@example.com" value={value.from} onChange={v => set('from', v)} />
+      </FormItem>
+      <FormItem label="收件人" required>
+        <Input placeholder="多个地址用英文逗号分隔"
+          value={Array.isArray(value.to) ? value.to.join(', ') : value.to}
+          onChange={v => set('to', v.split(',').map((s: string) => s.trim()).filter(Boolean))} />
+      </FormItem>
+      <FormItem label="SSL/TLS">
+        <Switch checked={value.use_tls} onChange={v => set('use_tls', v)} />
+      </FormItem>
+    </Form>
+  );
+
+  if (type === 'resend') return (
+    <Form layout={layout} labelCol={lc} wrapperCol={wc}>
+      <FormItem label="API Key" required>
+        <Input.Password placeholder="re_xxxxxxxx" value={value.api_key} onChange={v => set('api_key', v)} />
+      </FormItem>
+      <FormItem label="发件人" required>
+        <Input placeholder="Zhuque <no-reply@example.com>" value={value.from} onChange={v => set('from', v)} />
+      </FormItem>
+      <FormItem label="收件人" required>
+        <Input placeholder="多个地址用英文逗号分隔"
+          value={Array.isArray(value.to) ? value.to.join(', ') : value.to}
+          onChange={v => set('to', v.split(',').map((s: string) => s.trim()).filter(Boolean))} />
+      </FormItem>
+    </Form>
+  );
+
+  if (type === 'webhook') return (
+    <Form layout={layout} labelCol={lc} wrapperCol={wc}>
+      {isMobile ? (
+        <>
+          <FormItem label="请求方式">
+            <Select value={value.method} onChange={v => set('method', v)}>
+              {['GET','POST','PUT','PATCH'].map(m => <Option key={m} value={m}>{m}</Option>)}
+            </Select>
+          </FormItem>
+          <FormItem label="URL" required>
+            <Input placeholder="https://example.com/hook" value={value.url} onChange={v => set('url', v)} />
+          </FormItem>
+        </>
+      ) : (
+        <FormItem label="方式 / URL" required>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Select value={value.method} onChange={v => set('method', v)} style={{ width: 100 }}>
+              {['GET','POST','PUT','PATCH'].map(m => <Option key={m} value={m}>{m}</Option>)}
+            </Select>
+            <Input placeholder="https://example.com/hook" value={value.url} onChange={v => set('url', v)} style={{ flex: 1 }} />
+          </div>
+        </FormItem>
+      )}
+      <FormItem label="自定义 Headers">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {headerRows.map(row => (
+            <div key={row.id} style={{ display: 'flex', gap: 6 }}>
+              <Input placeholder="Header 名" value={row.key}
+                onChange={v => updateHeader(row.id, 'key', v)} style={{ flex: 1 }} />
+              <Input placeholder="值" value={row.value}
+                onChange={v => updateHeader(row.id, 'value', v)} style={{ flex: 2 }} />
+              <Button size="small" type="text" icon={<IconDelete />}
+                onClick={() => removeHeader(row.id)} />
+            </div>
+          ))}
+          <Button size="small" type="dashed" icon={<IconPlus />} onClick={addHeader}>
+            添加 Header
+          </Button>
+        </div>
+      </FormItem>
+      {value.method !== 'GET' && (
+        <FormItem label="Body 模板">
+          <Input.TextArea
+            placeholder={'留空则使用默认 JSON：\n{"title":"{title}","content":"{content}"}\n\n支持变量：{title} {content}'}
+            value={value.body_template}
+            onChange={v => set('body_template', v)}
+            autoSize={{ minRows: 3, maxRows: 8 }}
+          />
+        </FormItem>
+      )}
+    </Form>
+  );
+
+  return null;
+};
 
 // ─── 主页面 ───────────────────────────────────────────────────────────────────
 
@@ -128,93 +279,107 @@ const Notifications: React.FC = () => {
   const [onFailure, setOnFailure] = useState(true);
   const [onKilled,  setOnKilled]  = useState(true);
 
-  // 渠道启用开关
-  const [tgOn,   setTgOn]   = useState(false);
-  const [ppOn,   setPpOn]   = useState(false);
-  const [smtpOn, setSmtpOn] = useState(false);
-  const [resOn,  setResOn]  = useState(false);
-  const [wcOn,   setWcOn]   = useState(false);
-  const [whOn,    setWhOn]    = useState(false);
+  // 渠道列表
+  const [channels, setChannels] = useState<ChannelConfig[]>([]);
 
-  // 渠道配置
-  const [tg,    setTg]    = useState<TelegramConfig>(defaultTelegram());
-  const [pp,    setPp]    = useState<PushPlusConfig>(defaultPushPlus());
-  const [smtp,  setSmtp]  = useState<SmtpConfig>(defaultSmtp());
-  const [res,   setRes]   = useState<ResendConfig>(defaultResend());
-  const [wecom, setWecom] = useState<WeComConfig>(defaultWeCom());
-  const [wh,    setWh]    = useState<WebhookConfig>(defaultWebhook());
-  const [whHeaders, setWhHeaders] = useState<Array<{id: number; key: string; value: string}>>([]);
+  // 弹窗状态
+  const [modalVisible, setModalVisible] = useState(false);
+  const [editingId,    setEditingId]    = useState<string | null>(null);
+  const [modalType,    setModalType]    = useState('telegram');
+  const [modalName,    setModalName]    = useState('');
+  const [modalEnabled, setModalEnabled] = useState(true);
+  const [modalConfig,  setModalConfig]  = useState<Record<string, any>>({});
 
-  // 多收件人：用逗号分隔字符串维护，保存时 split
-  const [smtpTo, setSmtpTo] = useState('');
-  const [resTo,  setResTo]  = useState('');
+  // ─── 加载 ──────────────────────────────────────────────────────────────────
 
-  useEffect(() => { loadConfig(); }, []);
-
-  const loadConfig = async () => {
+  useEffect(() => {
     setLoading(true);
+    notificationApi.getConfig()
+      .then(cfg => {
+        setEnabled(cfg.enabled);
+        setOnSuccess(cfg.on_success);
+        setOnFailure(cfg.on_failure);
+        setOnKilled(cfg.on_killed);
+        setChannels(cfg.channels ?? []);
+      })
+      .catch(() => Message.error('加载通知配置失败'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  // ─── 弹窗操作 ──────────────────────────────────────────────────────────────
+
+  const openAdd = () => {
+    setEditingId(null);
+    setModalType('telegram');
+    setModalName('');
+    setModalEnabled(true);
+    setModalConfig({ ...(defaults['telegram'] as object) });
+    setModalVisible(true);
+  };
+
+  const openEdit = (ch: ChannelConfig) => {
+    setEditingId(ch.id);
+    setModalType(ch.type);
+    setModalName(ch.name);
+    setModalEnabled(ch.enabled);
+    setModalConfig({ ...(ch.config as Record<string, any>) });
+    setModalVisible(true);
+  };
+
+  const handleModalTypeChange = (t: string) => {
+    setModalType(t);
+    setModalConfig({ ...(defaults[t] as object) });
+  };
+
+  const handleModalOk = () => {
+    if (!modalName.trim()) { Message.warning('请填写渠道名称'); return; }
+    const entry: ChannelConfig = {
+      id:      editingId ?? crypto.randomUUID(),
+      name:    modalName.trim(),
+      type:    modalType,
+      enabled: modalEnabled,
+      config:  modalConfig as any,
+    };
+    if (editingId) {
+      setChannels(prev => prev.map(c => c.id === editingId ? entry : c));
+    } else {
+      setChannels(prev => [...prev, entry]);
+    }
+    setModalVisible(false);
+  };
+
+  const handleDelete = (id: string) => {
+    setChannels(prev => prev.filter(c => c.id !== id));
+  };
+
+  const handleToggle = (id: string, val: boolean) => {
+    setChannels(prev => prev.map(c => c.id === id ? { ...c, enabled: val } : c));
+  };
+
+  // ─── 测试 ──────────────────────────────────────────────────────────────────
+
+  const handleTest = async (ch: ChannelConfig) => {
+    setTesting(ch.id);
     try {
-      const cfg: NotificationConfig = await notificationApi.getConfig();
-      setEnabled(cfg.enabled);
-      setOnSuccess(cfg.on_success);
-      setOnFailure(cfg.on_failure);
-      setOnKilled(cfg.on_killed);
-
-      setTgOn(getChEnabled(cfg.channels, 'telegram'));
-      setPpOn(getChEnabled(cfg.channels, 'pushplus'));
-      setSmtpOn(getChEnabled(cfg.channels, 'smtp'));
-      setResOn(getChEnabled(cfg.channels, 'resend'));
-      setWcOn(getChEnabled(cfg.channels, 'wecom'));
-
-      const tgCfg   = getCh<TelegramConfig>(cfg.channels, 'telegram', defaultTelegram);
-      const ppCfg   = getCh<PushPlusConfig>(cfg.channels, 'pushplus', defaultPushPlus);
-      const smtpCfg = getCh<SmtpConfig>    (cfg.channels, 'smtp',     defaultSmtp);
-      const resCfg  = getCh<ResendConfig>  (cfg.channels, 'resend',   defaultResend);
-      const wcCfg   = getCh<WeComConfig>   (cfg.channels, 'wecom',    defaultWeCom);
-
-      setTg(tgCfg);
-      setPp(ppCfg);
-      setSmtp(smtpCfg);
-      setRes(resCfg);
-      setWecom(wcCfg);
-      setSmtpTo(smtpCfg.to.join(', '));
-      setResTo(resCfg.to.join(', '));
-
-      const whCh = cfg.channels.find(c => c.type === 'webhook');
-      if (whCh) {
-        setWhOn(whCh.enabled);
-        const whCfg = whCh.config as WebhookConfig;
-        setWh({ url: whCfg.url || '', method: whCfg.method || 'POST', headers: {}, body_template: whCfg.body_template || '' });
-        setWhHeaders(Object.entries(whCfg.headers || {}).map(([k, v], i) => ({ id: i, key: k, value: v })));
-      }
-    } catch {
-      Message.error('加载通知配置失败');
+      await notificationApi.testChannel({ channel_type: ch.type, config: ch.config as any });
+      Message.success(`${ch.name} 测试成功`);
+    } catch (e: any) {
+      Message.error(e.response?.data || '测试失败');
     } finally {
-      setLoading(false);
+      setTesting(null);
     }
   };
 
-  const toList = (s: string) => s.split(',').map((v) => v.trim()).filter(Boolean);
-
-  const buildConfig = (): NotificationConfig => ({
-    enabled,
-    on_success: onSuccess,
-    on_failure: onFailure,
-    on_killed:  onKilled,
-    channels: [
-      { type: 'telegram', enabled: tgOn,   config: tg },
-      { type: 'pushplus', enabled: ppOn,   config: pp },
-      { type: 'smtp',     enabled: smtpOn, config: { ...smtp, to: toList(smtpTo) } },
-      { type: 'resend',   enabled: resOn,  config: { ...res,  to: toList(resTo)  } },
-      { type: 'wecom',    enabled: wcOn,   config: wecom },
-      { type: 'webhook', enabled: whOn, config: { ...wh, headers: Object.fromEntries(whHeaders.filter(h => h.key).map(h => [h.key, h.value])) } as unknown as Record<string, unknown> },
-    ],
-  });
+  // ─── 保存 ──────────────────────────────────────────────────────────────────
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      await notificationApi.updateConfig(buildConfig());
+      const config: NotificationConfig = {
+        enabled, on_success: onSuccess, on_failure: onFailure, on_killed: onKilled,
+        channels,
+      };
+      await notificationApi.updateConfig(config);
       Message.success('保存成功');
     } catch (e: any) {
       Message.error(e.response?.data || '保存失败');
@@ -223,396 +388,156 @@ const Notifications: React.FC = () => {
     }
   };
 
-  const handleTest = async (type: string, config: Record<string, unknown>) => {
-    setTesting(type);
-    try {
-      await notificationApi.testChannel({ channel_type: type, config });
-      Message.success('测试发送成功，请确认是否收到消息');
-    } catch (e: any) {
-      Message.error(`测试失败：${e.response?.data || e.message}`);
-    } finally {
-      setTesting(null);
-    }
-  };
-
-  // 表单布局：移动端竖排，桌面端横排
-  const formLayout  = isMobile ? 'vertical' : 'horizontal';
-  const labelCol    = isMobile ? undefined : { span: 6 };
-  const wrapperCol  = isMobile ? undefined : { span: 18 };
+  // ─── 渲染 ──────────────────────────────────────────────────────────────────
 
   return (
     <Spin loading={loading} style={{ width: '100%' }}>
       <div style={{ maxWidth: 820, margin: '0 auto', padding: isMobile ? '0 8px 32px' : '0 16px 32px' }}>
 
-        {/* ── 全局设置 ─────────────────────────────────────────────── */}
-        <Card style={{ marginBottom: 16 }} title="全局设置">
-          <Form layout={formLayout} labelCol={labelCol} wrapperCol={wrapperCol}>
-            <FormItem label="启用通知">
-              <Space>
-                <Switch checked={enabled} onChange={setEnabled} />
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  总开关，关闭后所有渠道均不发送
-                </Text>
-              </Space>
-            </FormItem>
-
-            <FormItem label="触发条件" style={{ marginBottom: 0 }}>
-              {/* wrap 属性确保移动端自动换行 */}
-              <Space wrap size={[16, 8]}>
-                <Space size={6}>
-                  <Switch size="small" checked={onFailure} onChange={setOnFailure} />
-                  <Text>任务失败</Text>
-                </Space>
-                <Space size={6}>
-                  <Switch size="small" checked={onKilled} onChange={setOnKilled} />
-                  <Text>任务终止</Text>
-                </Space>
-                <Space size={6}>
-                  <Switch size="small" checked={onSuccess} onChange={setOnSuccess} />
-                  <Text>任务成功</Text>
-                </Space>
-              </Space>
-            </FormItem>
-          </Form>
+        {/* ── 全局开关 ── */}
+        <Card title="通知设置" style={{ marginBottom: 16 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: isMobile ? 12 : 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Text>通知总开关</Text>
+              <Switch checked={enabled} onChange={setEnabled} />
+            </div>
+            <Divider type="vertical" style={{ height: 22, margin: 0, display: isMobile ? 'none' : undefined }} />
+            <Text style={{ color: 'var(--color-text-3)', alignSelf: 'center' }}>触发条件：</Text>
+            <Space wrap size={[12, 8]}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Switch size="small" checked={onSuccess} onChange={setOnSuccess} />
+                <Text style={{ fontSize: 13 }}>成功时</Text>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Switch size="small" checked={onFailure} onChange={setOnFailure} />
+                <Text style={{ fontSize: 13 }}>失败时</Text>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Switch size="small" checked={onKilled} onChange={setOnKilled} />
+                <Text style={{ fontSize: 13 }}>终止时</Text>
+              </div>
+            </Space>
+          </div>
         </Card>
 
-        {/* ── 渠道配置（折叠面板）────────────────────────────────────── */}
-        <Card style={{ marginBottom: 16 }} title="通知渠道" bodyStyle={{ padding: 0 }}>
-          <Collapse bordered={false}>
-
-            {/* ── Telegram ── */}
-            <CollapseItem
-              name="telegram"
-              header={
-                <ChannelHeader
-                  label="Telegram"
-                  enabled={tgOn}
-                  testing={testing === 'telegram'}
-                  onToggle={setTgOn}
-                  onTest={() => handleTest('telegram', tg as unknown as Record<string, unknown>)}
-                />
-              }
-            >
-              <Form layout={formLayout} labelCol={labelCol} wrapperCol={wrapperCol}>
-                <FormItem label="Bot Token" required>
-                  <Input
-                    placeholder="110201543:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw"
-                    value={tg.bot_token}
-                    onChange={(v) => setTg({ ...tg, bot_token: v })}
-                  />
-                </FormItem>
-                <FormItem label="Chat ID" required>
-                  <Input
-                    placeholder="-1001234567890 或个人数字 ID"
-                    value={tg.chat_id}
-                    onChange={(v) => setTg({ ...tg, chat_id: v })}
-                  />
-                </FormItem>
-                <FormItem label="代理地址" style={{ marginBottom: 0 }}>
-                  <Input
-                    placeholder="http://127.0.0.1:7890（可选）"
-                    value={tg.proxy || ''}
-                    onChange={(v) => setTg({ ...tg, proxy: v })}
-                  />
-                </FormItem>
-              </Form>
-            </CollapseItem>
-
-            {/* ── 企业微信机器人 ── */}
-            <CollapseItem
-              name="wecom"
-              header={
-                <ChannelHeader
-                  label="企业微信机器人"
-                  enabled={wcOn}
-                  testing={testing === 'wecom'}
-                  onToggle={setWcOn}
-                  onTest={() => handleTest('wecom', wecom as unknown as Record<string, unknown>)}
-                />
-              }
-            >
-              <Form layout={formLayout} labelCol={labelCol} wrapperCol={wrapperCol}>
-                <FormItem label="Webhook URL" required style={{ marginBottom: 0 }}>
-                  <Input
-                    placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx"
-                    value={wecom.webhook_url}
-                    onChange={(v) => setWecom({ webhook_url: v })}
-                  />
-                </FormItem>
-              </Form>
-            </CollapseItem>
-
-            {/* ── Webhook ── */}
-            <CollapseItem
-              name="webhook"
-              header={
-                <ChannelHeader
-                  label="自定义 Webhook"
-                  enabled={whOn}
-                  testing={testing === 'webhook'}
-                  onToggle={setWhOn}
-                  onTest={() => handleTest('webhook', { ...wh, headers: (() => { const m: Record<string,string> = {}; whHeaders.forEach(h => { if(h.key) m[h.key]=h.value; }); return m; })() } as unknown as Record<string, unknown>)}
-                />
-              }
-            >
-              <Form layout={formLayout} labelCol={labelCol} wrapperCol={wrapperCol}>
-                <FormItem label="请求方式">
-                  <Select
-                    value={wh.method}
-                    onChange={(v) => setWh({ ...wh, method: v })}
-                    options={['GET','POST','PUT','PATCH'].map(m => ({ label: m, value: m }))}
-                    style={{ width: isMobile ? '100%' : 160 }}
-                  />
-                </FormItem>
-                <FormItem label="URL" required>
-                  <Input
-                    placeholder="https://example.com/webhook"
-                    value={wh.url}
-                    onChange={(v) => setWh({ ...wh, url: v })}
-                  />
-                </FormItem>
-                <FormItem label="自定义 Headers">
-                  <Space direction="vertical" style={{ width: '100%' }} size={6}>
-                    {whHeaders.map((row) => (
-                      <Space key={row.id} style={{ width: '100%', flexWrap: 'nowrap' as const }} size={6}>
-                        <Input
-                          placeholder="Header 名"
-                          value={row.key}
-                          style={{ flex: 1, minWidth: 0 }}
-                          onChange={(v) => setWhHeaders(prev => prev.map(h => h.id === row.id ? { ...h, key: v } : h))}
-                        />
-                        <Input
-                          placeholder="值"
-                          value={row.value}
-                          style={{ flex: 1, minWidth: 0 }}
-                          onChange={(v) => setWhHeaders(prev => prev.map(h => h.id === row.id ? { ...h, value: v } : h))}
-                        />
-                        <Button
-                          icon={<IconDelete />}
-                          size="mini"
-                          status="danger"
-                          type="text"
-                          onClick={() => setWhHeaders(prev => prev.filter(h => h.id !== row.id))}
-                        />
-                      </Space>
-                    ))}
-                    <Button
-                      icon={<IconPlus />}
-                      size="small"
-                      type="dashed"
-                      onClick={() => setWhHeaders(prev => [...prev, { id: Date.now(), key: '', value: '' }])}
-                    >
-                      添加 Header
-                    </Button>
-                  </Space>
-                </FormItem>
-                {wh.method !== 'GET' && (
-                  <FormItem label="Body 模板" style={{ marginBottom: 0 }}>
-                    <Input.TextArea
-                      placeholder={'留空则发送默认 JSON：\n{"title":"{title}","content":"{content}"}\n\n可用变量：{title}、{content}'}
-                      value={wh.body_template}
-                      onChange={(v) => setWh({ ...wh, body_template: v })}
-                      autoSize={{ minRows: 3, maxRows: 8 }}
-                      style={{ fontFamily: 'monospace', fontSize: 12 }}
-                    />
-                  </FormItem>
-                )}
-              </Form>
-            </CollapseItem>
-
-            {/* ── PushPlus 微信 ── */}
-            <CollapseItem
-              name="pushplus"
-              header={
-                <ChannelHeader
-                  label="PushPlus（微信）"
-                  enabled={ppOn}
-                  testing={testing === 'pushplus'}
-                  onToggle={setPpOn}
-                  onTest={() => handleTest('pushplus', pp as unknown as Record<string, unknown>)}
-                />
-              }
-            >
-              <Form layout={formLayout} labelCol={labelCol} wrapperCol={wrapperCol}>
-                <FormItem label="Token" required>
-                  <Input
-                    placeholder="前往 pushplus.plus 获取 Token"
-                    value={pp.token}
-                    onChange={(v) => setPp({ ...pp, token: v })}
-                  />
-                </FormItem>
-                <FormItem label="群组编码" style={{ marginBottom: 0 }}>
-                  <Input
-                    placeholder="可选，群组推送时填写"
-                    value={pp.topic || ''}
-                    onChange={(v) => setPp({ ...pp, topic: v })}
-                  />
-                </FormItem>
-              </Form>
-            </CollapseItem>
-
-            {/* ── SMTP 邮件 ── */}
-            <CollapseItem
-              name="smtp"
-              header={
-                <ChannelHeader
-                  label="SMTP 邮件"
-                  enabled={smtpOn}
-                  testing={testing === 'smtp'}
-                  onToggle={setSmtpOn}
-                  onTest={() => handleTest('smtp', { ...smtp, to: toList(smtpTo) } as unknown as Record<string, unknown>)}
-                />
-              }
-            >
-              <Form layout={formLayout} labelCol={labelCol} wrapperCol={wrapperCol}>
-                {/* 移动端竖排；桌面端 host 占 2/3、port 占 1/3 */}
-                {isMobile ? (
-                  <>
-                    <FormItem label="SMTP 服务器" required>
-                      <Input
-                        placeholder="smtp.qq.com"
-                        value={smtp.host}
-                        onChange={(v) => setSmtp({ ...smtp, host: v })}
-                      />
-                    </FormItem>
-                    <FormItem label="端口">
-                      <InputNumber
-                        min={1} max={65535}
-                        value={smtp.port}
-                        onChange={(v) => setSmtp({ ...smtp, port: v || 465 })}
-                        style={{ width: '100%' }}
-                      />
-                    </FormItem>
-                  </>
-                ) : (
-                  <FormItem label="SMTP 服务器" required>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <Input
-                        placeholder="smtp.qq.com"
-                        value={smtp.host}
-                        onChange={(v) => setSmtp({ ...smtp, host: v })}
-                        style={{ flex: 1 }}
-                      />
-                      <InputNumber
-                        min={1} max={65535}
-                        value={smtp.port}
-                        onChange={(v) => setSmtp({ ...smtp, port: v || 465 })}
-                        style={{ width: 90 }}
-                      />
-                    </div>
-                  </FormItem>
-                )}
-                <FormItem label="用户名" required>
-                  <Input
-                    placeholder="your@email.com"
-                    value={smtp.username}
-                    onChange={(v) => setSmtp({ ...smtp, username: v })}
-                  />
-                </FormItem>
-                <FormItem label="密码 / 授权码" required>
-                  <Input.Password
-                    placeholder="邮箱密码或授权码"
-                    value={smtp.password}
-                    onChange={(v) => setSmtp({ ...smtp, password: v })}
-                  />
-                </FormItem>
-                <FormItem label="发件人" required>
-                  <Input
-                    placeholder="your@email.com 或 朱雀 <your@email.com>"
-                    value={smtp.from}
-                    onChange={(v) => setSmtp({ ...smtp, from: v })}
-                  />
-                </FormItem>
-                <FormItem label="收件人" required>
-                  <Input
-                    placeholder="多个地址用英文逗号分隔"
-                    value={smtpTo}
-                    onChange={setSmtpTo}
-                  />
-                </FormItem>
-                <FormItem label="SSL/TLS" style={{ marginBottom: 0 }}>
-                  <Space size={8}>
-                    <Switch
-                      checked={smtp.use_tls}
-                      onChange={(v) => setSmtp({ ...smtp, use_tls: v })}
-                    />
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      端口 465 开启；587 STARTTLS 关闭
+        {/* ── 渠道列表 ── */}
+        <Card
+          title="通知渠道"
+          extra={
+            <Button type="primary" size="small" icon={<IconPlus />} onClick={openAdd}>
+              添加渠道
+            </Button>
+          }
+          style={{ marginBottom: 16 }}
+        >
+          {channels.length === 0 ? (
+            <Empty description="暂无通知渠道，点击右上角添加" />
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {channels.map(ch => (
+                <div key={ch.id} style={{
+                  display: 'flex',
+                  flexDirection: isMobile ? 'column' : 'row',
+                  alignItems: isMobile ? 'stretch' : 'center',
+                  gap: isMobile ? 6 : 8,
+                  padding: '10px 12px', borderRadius: 6,
+                  background: 'var(--color-fill-2)',
+                }}>
+                  {/* 名称 + 类型 tag + 状态 tag */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                    <Text style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {ch.name}
                     </Text>
-                  </Space>
-                </FormItem>
-              </Form>
-            </CollapseItem>
-
-            {/* ── Resend ── */}
-            <CollapseItem
-              name="resend"
-              header={
-                <ChannelHeader
-                  label="Resend"
-                  enabled={resOn}
-                  testing={testing === 'resend'}
-                  onToggle={setResOn}
-                  onTest={() => handleTest('resend', { ...res, to: toList(resTo) } as unknown as Record<string, unknown>)}
-                />
-              }
-            >
-              <Form layout={formLayout} labelCol={labelCol} wrapperCol={wrapperCol}>
-                <FormItem label="API Key" required>
-                  <Input.Password
-                    placeholder="re_xxxxxxxxxxxx"
-                    value={res.api_key}
-                    onChange={(v) => setRes({ ...res, api_key: v })}
-                  />
-                </FormItem>
-                <FormItem label="发件人" required>
-                  <Input
-                    placeholder="朱雀通知 <notify@yourdomain.com>"
-                    value={res.from}
-                    onChange={(v) => setRes({ ...res, from: v })}
-                  />
-                </FormItem>
-                <FormItem label="收件人" required style={{ marginBottom: 0 }}>
-                  <Input
-                    placeholder="多个地址用英文逗号分隔"
-                    value={resTo}
-                    onChange={setResTo}
-                  />
-                </FormItem>
-              </Form>
-            </CollapseItem>
-
-          </Collapse>
+                    <Tag color={typeColor(ch.type)} size="small">{typeLabel(ch.type)}</Tag>
+                    {!ch.enabled && <Tag color="gray" size="small">已禁用</Tag>}
+                  </div>
+                  {/* 开关 + 操作按钮 */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: isMobile ? 'flex-end' : 'flex-start' }}>
+                    <Switch size="small" checked={ch.enabled}
+                      onChange={v => handleToggle(ch.id, v)} />
+                    <Button size="mini" type="text" icon={<IconSend />}
+                      loading={testing === ch.id}
+                      onClick={() => handleTest(ch)}>
+                      {!isMobile && '测试'}
+                    </Button>
+                    <Button size="mini" type="text" icon={<IconEdit />}
+                      onClick={() => openEdit(ch)}>
+                      {!isMobile && '编辑'}
+                    </Button>
+                    <Popconfirm title="确认删除此渠道？" onOk={() => handleDelete(ch.id)}>
+                      <Button size="mini" type="text" status="danger" icon={<IconDelete />}>
+                        {!isMobile && '删除'}
+                      </Button>
+                    </Popconfirm>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </Card>
 
-        {/* ── 脚本调用说明 ─────────────────────────────────────────── */}
-        <Card style={{ marginBottom: 16 }} title="脚本内发送通知">
-          <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 13 }}>
-            执行器启动任务时自动注入以下工具，无需额外配置。
+        {/* ── 脚本调用说明 ── */}
+        <Card title="脚本内发送通知" style={{ marginBottom: 16 }}>
+          <Text style={{ fontSize: 13, color: 'var(--color-text-3)' }}>
+            任务执行时，以下调用方式可主动推送通知到已启用的所有渠道：
           </Text>
-          <Divider orientation="left" style={{ fontSize: 12, color: '#999', margin: '8px 0' }}>Shell</Divider>
-          <CodeBlock code={`notify "签到结果" "账号A: +50豆\\n账号B: 失败"`} />
+          <Divider orientation="left" style={{ fontSize: 12, color: '#999', margin: '12px 0 8px' }}>Shell</Divider>
+          <pre style={{ background: 'var(--color-fill-2)', padding: '8px 12px', borderRadius: 4, fontSize: 12, margin: 0, overflowX: 'auto', whiteSpace: 'pre' }}>
+            {`notify "签到结果" "账号A: +50豆\\n账号B: 失败"`}
+          </pre>
           <Divider orientation="left" style={{ fontSize: 12, color: '#999', margin: '12px 0 8px' }}>Python</Divider>
-          <CodeBlock code={`from notify import send\nsend("签到结果", "账号A: +50豆")`} />
+          <pre style={{ background: 'var(--color-fill-2)', padding: '8px 12px', borderRadius: 4, fontSize: 12, margin: 0, overflowX: 'auto', whiteSpace: 'pre' }}>
+            {`from notify import send\nsend("签到结果", "账号A: +50豆")`}
+          </pre>
           <Divider orientation="left" style={{ fontSize: 12, color: '#999', margin: '12px 0 8px' }}>Node.js</Divider>
-          <CodeBlock code={`const { sendNotify } = require('./sendNotify')\nsendNotify('签到结果', '账号A: +50豆')`} />
+          <pre style={{ background: 'var(--color-fill-2)', padding: '8px 12px', borderRadius: 4, fontSize: 12, margin: 0, overflowX: 'auto', whiteSpace: 'pre' }}>
+            {`const { sendNotify } = require('./sendNotify')\nsendNotify('签到结果', '账号A: +50豆')`}
+          </pre>
         </Card>
 
-        {/* ── 保存按钮 ─────────────────────────────────────────────── */}
+        {/* ── 保存按钮 ── */}
         <div style={{ textAlign: 'right' }}>
-          <Button
-            type="primary"
-            icon={<IconSave />}
-            loading={saving}
-            onClick={handleSave}
-            size="large"
-            long={isMobile}   // 移动端占满宽度
-          >
+          <Button type="primary" icon={<IconSave />} loading={saving}
+            onClick={handleSave} size="large" long={isMobile}>
             保存配置
           </Button>
         </div>
 
       </div>
+
+      {/* ── 添加 / 编辑 弹窗 ── */}
+      <Modal
+        title={editingId ? '编辑通知渠道' : '添加通知渠道'}
+        visible={modalVisible}
+        onOk={handleModalOk}
+        onCancel={() => setModalVisible(false)}
+        style={{ width: isMobile ? '95vw' : 560 }}
+        unmountOnExit
+      >
+        <Form layout="vertical">
+          <FormItem label="渠道名称" required>
+            <Input placeholder="例：主TG机器人、备用Webhook"
+              value={modalName} onChange={setModalName} />
+          </FormItem>
+          <FormItem label="渠道类型">
+            <Select value={modalType} onChange={handleModalTypeChange} disabled={!!editingId}>
+              {CHANNEL_TYPES.map(t => (
+                <Option key={t.value} value={t.value}>{t.label}</Option>
+              ))}
+            </Select>
+          </FormItem>
+          <FormItem label="启用">
+            <Switch checked={modalEnabled} onChange={setModalEnabled} />
+          </FormItem>
+          <Divider style={{ margin: '8px 0' }} />
+          <ConfigForm
+            type={modalType}
+            value={modalConfig}
+            onChange={setModalConfig}
+            isMobile={isMobile}
+          />
+        </Form>
+      </Modal>
     </Spin>
   );
 };

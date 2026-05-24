@@ -15,9 +15,9 @@
 
 <div align="center">
 
-![界面截图1](screenshot/1.png)
+![screenshot1](screenshot/1.png)
 
-![界面截图2](screenshot/2.png)
+![screenshot2](screenshot/2.png)
 
 </div>
 
@@ -31,11 +31,13 @@
 - 📊 **日志查看** - 实时查看任务执行日志，支持搜索和过滤
 - 💻 **Web 终端** - 基于 WebSocket 的在线终端，支持实时交互和窗口调整
 - 🔄 **订阅管理** - 支持 Git 仓库订阅，定时拉取更新并执行脚本
+- 🔔 **多渠道通知** - 支持 Telegram、钉钉、飞书、企业微信、邮件等 10 种渠道，任务结果/登录/脚本主动触发均可推送
 - 🎨 **现代化 UI** - 基于 Arco Design，响应式设计，支持移动端
 
 ## 🏗️ 技术栈
 
 ### 后端
+
 - **Rust** - 系统编程语言
 - **Axum** - Web 框架
 - **SQLite** - 数据库
@@ -43,6 +45,7 @@
 - **Tokio-cron-scheduler** - 定时任务调度
 
 ### 前端
+
 - **React 18** + **TypeScript**
 - **Vite 5** - 构建工具
 - **Arco Design** - UI 组件库
@@ -57,11 +60,11 @@
 使用预构建的 Docker 镜像快速启动：
 
 ```bash
-docker run -d \
-  --name zhuque \
-  -p 3000:3000 \
-  -v $(pwd)/data:/app/data \
-  -e TZ=Asia/Shanghai \
+docker run -d 
+  --name zhuque 
+  -p 3000:3000 
+  -v $(pwd)/data:/app/data 
+  -e TZ=Asia/Shanghai 
   ghcr.io/mtvpls/zhuque:latest
 ```
 
@@ -76,17 +79,20 @@ docker-compose up -d
 ### 开发环境
 
 前置要求：
+
 - Rust 1.70+
 - Node.js 18+
 - SQLite 3
 
 1. 克隆项目
+
 ```bash
 git clone <repository-url>
 cd xuanwu
 ```
 
 2. 启动后端
+
 ```bash
 cargo run
 ```
@@ -94,6 +100,7 @@ cargo run
 后端服务运行在 `http://localhost:3000`
 
 3. 启动前端
+
 ```bash
 cd web
 npm install
@@ -107,13 +114,13 @@ npm run dev
 #### 方式一：Docker 镜像（推荐）
 
 ```bash
-docker run -d \
-  --name zhuque \
-  -p 3000:3000 \
-  -v $(pwd)/data:/app/data \
-  -e RUST_LOG=info \
-  -e TZ=Asia/Shanghai \
-  --restart unless-stopped \
+docker run -d 
+  --name zhuque 
+  -p 3000:3000 
+  -v $(pwd)/data:/app/data 
+  -e RUST_LOG=info 
+  -e TZ=Asia/Shanghai 
+  --restart unless-stopped 
   ghcr.io/mtvpls/zhuque:latest
 ```
 
@@ -128,23 +135,27 @@ docker-compose up -d
 #### 方式三：手动部署
 
 1. 构建后端
+
 ```bash
 cargo build --release
 ```
 
 2. 构建前端
+
 ```bash
 cd web
 npm run build
 ```
 
 3. 设置环境变量（可选，创建 `.env` 文件或直接导出）
+
 ```bash
 export RUST_LOG=info
 export TZ=Asia/Shanghai
 ```
 
 4. 运行
+
 ```bash
 ./target/release/zhuque
 ```
@@ -155,7 +166,7 @@ export TZ=Asia/Shanghai
 
 ## 📁 项目结构
 
-```
+```markdown
 xuanwu/
 ├── src/                    # Rust 后端源码
 │   ├── api/               # API 路由处理
@@ -187,6 +198,7 @@ xuanwu/
 ## 🎯 核心功能
 
 ### 定时任务管理
+
 - ✅ 创建、编辑、删除任务
 - ✅ Cron 表达式支持
 - ✅ 任务启用/禁用
@@ -195,6 +207,7 @@ xuanwu/
 - ✅ 开机自动执行
 
 ### 脚本管理
+
 - ✅ 文件树展示
 - ✅ 在线代码编辑（Monaco Editor）
 - ✅ 语法高亮（Python/Node.js/Shell）
@@ -203,6 +216,7 @@ xuanwu/
 - ✅ 目录管理
 
 ### 依赖管理
+
 - ✅ Python3 依赖（pip）
 - ✅ Node.js 依赖（npm）
 - ✅ Linux 系统依赖（apt）
@@ -211,17 +225,20 @@ xuanwu/
 - ✅ 安装状态实时显示
 
 ### 环境变量管理
+
 - ✅ 键值对管理
 - ✅ 环境变量分组
 - ✅ 任务级环境变量
 
 ### 执行日志
+
 - ✅ 任务执行日志查看
 - ✅ 实时日志流
 - ✅ 日志搜索和过滤
 - ✅ 日志清理
 
 ### Web 终端
+
 - ✅ 基于 WebSocket 的实时终端
 - ✅ 支持终端窗口大小调整
 - ✅ 自动加载环境变量
@@ -229,6 +246,7 @@ xuanwu/
 - ✅ 完整的 Shell 交互体验
 
 ### 订阅管理
+
 - ✅ Git 仓库订阅
 - ✅ 定时拉取更新（Cron 表达式）
 - ✅ 分支选择
@@ -237,53 +255,65 @@ xuanwu/
 - ✅ 执行状态和日志记录
 
 ### 系统配置
+
 - ✅ 镜像源配置（pip/npm）
 - ✅ 数据备份与恢复
 - ✅ JWT 认证系统
 - ✅ TOTP 二次验证（支持 Google Authenticator 等验证器）
 - ✅ 备用恢复码
 
+### 通知管理
+
+- ✅ 支持 10 种通知渠道：Telegram、PushPlus（微信）、SMTP 邮件、Resend、企业微信机器人、自定义 Webhook、钉钉机器人、飞书机器人、Bark（iOS）、ntfy（自托管）
+- ✅ 全局触发条件配置：任务成功 / 失败 / 被终止 / 登录时推送
+- ✅ 任务级别通知覆盖：可单独为每个任务指定触发条件和推送渠道
+- ✅ 脚本主动推送：脚本运行期间可通过内置 API 主动发送自定义通知
+- ✅ 渠道连通性测试：保存前一键发送测试消息验证配置是否正确
+- ✅ 多渠道并发推送：同一事件可同时推送到多个渠道
+
 ## 🔧 配置说明
 
 ### 环境变量
 
 | 变量名 | 说明 | 默认值 | 必填 |
-|--------|------|--------|------|
+| --- | --- | --- | --- |
 | `JWT_SECRET` | JWT 密钥（建议自定义） | 自动生成 UUID | 否 |
-| `WEBHOOK_TOKEN` | Webhook 认证令牌 | 无 | 否* |
+| `WEBHOOK_TOKEN` | Webhook 认证令牌 | 无 | 否\* |
 | `DATA_DIR` | 数据目录路径 | `./data` | 否 |
 | `PORT` | 服务端口 | `3000` | 否 |
 | `RUST_LOG` | 日志级别 (trace/debug/info/warn/error) | `info` | 否 |
 | `TZ` | 时区设置 | `Asia/Shanghai` | 否 |
 | `AUTO_RESTORE_ON_STARTUP` | 启动时自动恢复备份 | `false` | 否 |
-| `WEBDAV_URL` | WebDAV 服务器地址 | 无 | 否** |
-| `WEBDAV_USERNAME` | WebDAV 用户名 | 无 | 否** |
-| `WEBDAV_PASSWORD` | WebDAV 密码 | 无 | 否** |
+| `WEBDAV_URL` | WebDAV 服务器地址 | 无 | 否\*\* |
+| `WEBDAV_USERNAME` | WebDAV 用户名 | 无 | 否\*\* |
+| `WEBDAV_PASSWORD` | WebDAV 密码 | 无 | 否\*\* |
 | `WEBDAV_REMOTE_PATH` | WebDAV 远程路径 | 无 | 否 |
 
 > **注意：**
+>
 > - `WEBHOOK_TOKEN` 如果需要使用 Webhook 功能则必须配置
 > - `WEBDAV_*` 如果启用 `AUTO_RESTORE_ON_STARTUP` 则必须配置 WebDAV 相关信息
-> - ~~`AUTH_USERNAME` 和 `AUTH_PASSWORD` 已废弃~~，首次启动时通过 Web 界面设置管理员账号
+> - `AUTH_USERNAME` ~~和~~ `AUTH_PASSWORD` ~~已废弃~~，首次启动时通过 Web 界面设置管理员账号
 
 **Docker 运行示例：**
 
 ```bash
-docker run -d \
-  --name zhuque \
-  -p 3000:3000 \
-  -v $(pwd)/data:/app/data \
-  -e JWT_SECRET=your_jwt_secret_key \
-  -e WEBHOOK_TOKEN=your_webhook_token \
-  -e DATA_DIR=/app/data \
-  -e PORT=3000 \
-  -e RUST_LOG=info \
-  -e TZ=Asia/Shanghai \
-  --restart unless-stopped \
+docker run -d 
+  --name zhuque 
+  -p 3000:3000 
+  -v $(pwd)/data:/app/data 
+  -e JWT_SECRET=your_jwt_secret_key 
+  -e WEBHOOK_TOKEN=your_webhook_token 
+  -e DATA_DIR=/app/data 
+  -e PORT=3000 
+  -e RUST_LOG=info 
+  -e TZ=Asia/Shanghai 
+  --restart unless-stopped 
   ghcr.io/mtvpls/zhuque:latest
 ```
 
 **重要提示：**
+
 - 首次启动时，访问 Web 界面会自动跳转到初始设置页面，请设置管理员账号和强密码
 - 如需使用 Webhook 功能，必须配置 `WEBHOOK_TOKEN`
 
@@ -311,6 +341,7 @@ TZ=Asia/Shanghai
 ```
 
 该目录包含：
+
 - `data/db/` - SQLite 数据库文件
 - `data/scripts/` - 用户上传的脚本文件
 - `data/logs/` - 任务执行日志
@@ -320,6 +351,7 @@ TZ=Asia/Shanghai
 详细的 API 文档请参考 [ARCHITECTURE.md](ARCHITECTURE.md)
 
 主要接口：
+
 - `/api/auth/login` - 用户登录（第一步）
 - `/api/auth/totp/verify` - TOTP 验证（第二步）
 - `/api/auth/totp/*` - TOTP 管理接口

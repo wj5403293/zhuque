@@ -216,4 +216,20 @@ impl EnvService {
 
         Ok(result.rows_affected() > 0)
     }
+
+    /// 批量删除环境变量
+    pub async fn batch_delete(&self, ids: Vec<i64>) -> Result<usize> {
+        if ids.is_empty() {
+            return Ok(0);
+        }
+        let pool = self.pool.read().await;
+        let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!("DELETE FROM env_vars WHERE id IN ({})", placeholders);
+        let mut q = sqlx::query(&sql);
+        for id in &ids {
+            q = q.bind(*id);
+        }
+        let result = q.execute(&*pool).await?;
+        Ok(result.rows_affected() as usize)
+    }
 }

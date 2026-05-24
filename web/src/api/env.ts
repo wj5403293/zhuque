@@ -10,4 +10,6 @@ export const envApi = {
   delete: (id: number) => request.delete(`/env/${id}`),
   batchImport: (vars: Array<{ key: string; value: string }>, overwrite: boolean) =>
     request.post<{ created: number; updated: number }>('/env/batch', { vars, overwrite }),
+  batchDelete: (ids: number[]) =>
+    request.delete<{ deleted: number }>('/env/batch', { data: { ids } }),
 };

@@ -46,3 +46,8 @@ pub struct BatchImportResponse {
     pub updated: usize,
     pub conflicts: Vec<String>,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BatchDeleteRequest {
+    pub ids: Vec<i64>,
+}

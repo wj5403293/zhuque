@@ -53,6 +53,10 @@ const Env: React.FC = () => {
   const [allowOverwrite, setAllowOverwrite] = useState(false);
   const [batchLoading, setBatchLoading] = useState(false);
 
+  // 批量删除
+  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const [batchDeleteLoading, setBatchDeleteLoading] = useState(false);
+
   useEffect(() => {
     const handleResize = () => {
       setIsMobile(window.innerWidth < 768);
@@ -140,6 +144,21 @@ const Env: React.FC = () => {
       Message.error(error.response?.data?.error || '批量导入失败');
     } finally {
       setBatchLoading(false);
+    }
+  };
+
+  const handleBatchDelete = async () => {
+    if (selectedRowKeys.length === 0) return;
+    setBatchDeleteLoading(true);
+    try {
+      const res: any = await envApi.batchDelete(selectedRowKeys);
+      Message.success(`已删除 ${res.deleted} 个环境变量`);
+      setSelectedRowKeys([]);
+      loadEnvVars();
+    } catch (error: any) {
+      Message.error(error.response?.data?.error || '批量删除失败');
+    } finally {
+      setBatchDeleteLoading(false);
     }
   };
 
@@ -231,12 +250,27 @@ const Env: React.FC = () => {
         }}
       >
         <Space>
-          <Button type="primary" icon={<IconPlus />} onClick={handleAdd}>
-            新建变量
+          <Button type="primary" size={isMobile ? 'small' : 'default'} icon={<IconPlus />} onClick={handleAdd}>
+            {isMobile ? null : '新建变量'}
           </Button>
-          <Button icon={<IconImport />} onClick={() => setBatchVisible(true)}>
-            批量导入
+          <Button size={isMobile ? 'small' : 'default'} icon={<IconImport />} onClick={() => setBatchVisible(true)}>
+            {isMobile ? null : '批量导入'}
           </Button>
+          {selectedRowKeys.length > 0 && (
+            <Popconfirm
+              title={`确定删除选中的 ${selectedRowKeys.length} 个环境变量吗？`}
+              onOk={handleBatchDelete}
+            >
+              <Button
+                size={isMobile ? 'small' : 'default'}
+                status="danger"
+                icon={<IconDelete />}
+                loading={batchDeleteLoading}
+              >
+                {isMobile ? `(${selectedRowKeys.length})` : `批量删除 (${selectedRowKeys.length})`}
+              </Button>
+            </Popconfirm>
+          )}
         </Space>
         <Input.Search
           allowClear
@@ -259,6 +293,11 @@ const Env: React.FC = () => {
         pagination={{ pageSize: 10 }}
         scroll={{ x: 1200 }}
         rowKey="id"
+        rowSelection={{
+          type: 'checkbox',
+          selectedRowKeys,
+          onChange: (keys) => setSelectedRowKeys(keys as number[]),
+        }}
       />
 
       <Modal

@@ -1,5 +1,5 @@
 use crate::api::AppState;
-use crate::models::{BatchImportRequest, CreateEnvVar, UpdateEnvVar};
+use crate::models::{BatchDeleteRequest, BatchImportRequest, CreateEnvVar, UpdateEnvVar};
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -122,4 +122,23 @@ pub async fn batch_import_env_vars(
         "created": result.created,
         "updated": result.updated,
     })))
+}
+
+/// 批量删除环境变量
+pub async fn batch_delete_env_vars(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<BatchDeleteRequest>,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    let count = state
+        .env_service
+        .batch_delete(payload.ids)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+        })?;
+
+    Ok(Json(serde_json::json!({ "deleted": count })))
 }

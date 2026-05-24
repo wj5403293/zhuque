@@ -25,7 +25,7 @@
 
 - 🚀 **高性能** - 基于 Rust + Axum 构建，内存占用低，响应速度快
 - 📅 **定时任务** - 支持 Cron 表达式，灵活配置任务执行时间
-- 📝 **脚本管理** - 在线编辑、上传、执行 Python/Node.js/Shell 脚本
+- 📝 **脚本管理** - 在线编辑、上传、执行 Python/Node.js/Shell/TypeScript 脚本
 - 📦 **依赖管理** - 统一管理 Python、Node.js、Linux 系统依赖
 - 🔐 **安全认证** - JWT Token 认证 + TOTP 二次验证，保护 API 接口
 - 📊 **日志查看** - 实时查看任务执行日志，支持搜索和过滤
@@ -210,9 +210,9 @@ xuanwu/
 
 - ✅ 文件树展示
 - ✅ 在线代码编辑（Monaco Editor）
-- ✅ 语法高亮（Python/Node.js/Shell）
+- ✅ 语法高亮（Python/Node.js/TypeScript/Shell）
 - ✅ 脚本上传/下载
-- ✅ 在线调试执行
+- ✅ 在线调试执行（Python / Node.js / TypeScript / Shell）
 - ✅ 目录管理
 
 ### 依赖管理
@@ -270,6 +270,39 @@ xuanwu/
 - ✅ 脚本主动推送：脚本运行期间可通过内置 API 主动发送自定义通知
 - ✅ 渠道连通性测试：保存前一键发送测试消息验证配置是否正确
 - ✅ 多渠道并发推送：同一事件可同时推送到多个渠道
+
+### 脚本内通知
+
+任务或脚本执行时，可通过内置 helper 主动发送通知到已配置的渠道，无需额外配置。
+
+**Shell**
+
+```bash
+notify "标题" "内容"
+```
+
+**Python**
+
+```python
+from notify import send
+send("标题", "内容")
+```
+
+**Node.js**
+
+```javascript
+const { sendNotify } = require('sendNotify');
+sendNotify('标题', '内容');
+```
+
+**TypeScript**（运行时为 Bun）
+
+```typescript
+import { sendNotify } from 'sendNotify';
+sendNotify('标题', '内容');
+```
+
+> Helper 文件位于 `data/helpers/`，启动时自动生成，支持在脚本中直接调用，无需安装任何依赖。
 
 ## 🔧 配置说明
 

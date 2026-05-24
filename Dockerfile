@@ -25,8 +25,11 @@ RUN apt-get update \
     python3 \
     python3-pip \
     git \
+    unzip \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y nodejs
+    && apt-get install -y nodejs \
+    && curl -fsSL https://bun.sh/install | bash \
+    && ln -s /root/.bun/bin/bun /usr/local/bin/bun
 
 RUN ln -s /usr/bin/python3 /usr/bin/python
 

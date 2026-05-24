@@ -69,14 +69,16 @@ impl<R: AsyncReadExt + Unpin> LineReader<R> {
 
 pub struct ScriptService {
     base_path: PathBuf,
+    helpers_dir: PathBuf,
     running_processes: Arc<RwLock<HashMap<String, u32>>>, // execution_id -> PID
     env_service: Arc<EnvService>,
 }
 
 impl ScriptService {
-    pub fn new(base_path: PathBuf, env_service: Arc<EnvService>) -> Self {
+    pub fn new(base_path: PathBuf, helpers_dir: PathBuf, env_service: Arc<EnvService>) -> Self {
         Self {
             base_path,
+            helpers_dir,
             running_processes: Arc::new(RwLock::new(HashMap::new())),
             env_service,
         }
@@ -91,9 +93,24 @@ impl ScriptService {
     }
 
     /// 获取基础环境变量
-    fn get_base_env() -> HashMap<String, String> {
+    fn get_base_env(&self) -> HashMap<String, String> {
+        let helpers = self.helpers_dir.to_string_lossy();
+        let sys_path = std::env::var("PATH").unwrap_or_default();
+        let sys_pypath = std::env::var("PYTHONPATH").unwrap_or_default();
+        let sys_nodepath = std::env::var("NODE_PATH").unwrap_or_default();
+
         let mut env_vars = HashMap::new();
-        env_vars.insert("PATH".to_string(), std::env::var("PATH").unwrap_or_default());
+        env_vars.insert("PATH".to_string(), format!("{}:{}", helpers, sys_path));
+        env_vars.insert("PYTHONPATH".to_string(), if sys_pypath.is_empty() {
+            helpers.to_string()
+        } else {
+            format!("{}:{}", helpers, sys_pypath)
+        });
+        env_vars.insert("NODE_PATH".to_string(), if sys_nodepath.is_empty() {
+            helpers.to_string()
+        } else {
+            format!("{}:{}", helpers, sys_nodepath)
+        });
         env_vars.insert("HOME".to_string(), std::env::var("HOME").unwrap_or_default());
         env_vars.insert("USER".to_string(), std::env::var("USER").unwrap_or_default());
         env_vars.insert("SHELL".to_string(), std::env::var("SHELL").unwrap_or_default());
@@ -103,7 +120,7 @@ impl ScriptService {
 
     /// 解析环境变量JSON
     async fn parse_env(&self, env_json: Option<&str>) -> HashMap<String, String> {
-        let mut env_vars = Self::get_base_env();
+        let mut env_vars = self.get_base_env();
 
         // 从数据库读取全局环境变量
         if let Ok(global_vars) = self.env_service.get_all_as_map().await {
@@ -392,8 +409,12 @@ impl ScriptService {
             c.arg("-u");  // 禁用输出缓冲
             c.arg(&absolute_path);
             c
-        } else if path.ends_with(".js") || path.ends_with(".ts") {
+        } else if path.ends_with(".js") {
             let mut c = Command::new("node");
+            c.arg(&absolute_path);
+            c
+        } else if path.ends_with(".ts") {
+            let mut c = Command::new("bun");
             c.arg(&absolute_path);
             c
         } else {
@@ -509,7 +530,7 @@ impl ScriptService {
                 c
             }
             "ts" => {
-                let mut c = Command::new("node");
+                let mut c = Command::new("bun");
                 c.arg(&temp_file_abs);
                 c
             }

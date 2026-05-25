@@ -156,12 +156,12 @@ impl Scheduler {
 
                     let start_time = chrono::Utc::now();
 
-                    // 执行任务
-                    let (_execution_id, output, success) = match executor.execute(&task).await {
+                    // 执行任务（cron 调度处）
+                    let (_execution_id, output, status) = match executor.execute(&task).await {
                         Ok(result) => result,
                         Err(e) => {
                             error!("Task execution error: {}", e);
-                            (String::new(), format!("Execution error: {}", e), false)
+                            (String::new(), format!("Execution error: {}", e), "failed")
                         }
                     };
 
@@ -182,7 +182,6 @@ impl Scheduler {
                     }
 
                     // 保存日志
-                    let status = if success { "success" } else { "failed" };
                     if let Err(e) = log_service.create(task.id, output, status.to_string(), Some(duration), start_time).await {
                         error!("Failed to save log: {}", e);
                     }
@@ -222,11 +221,11 @@ impl Scheduler {
         tokio::spawn(async move {
             let start_time = chrono::Utc::now();
 
-            let (_execution_id, output, success) = match executor.execute(&task).await {
+            let (_execution_id, output, status) = match executor.execute(&task).await {
                 Ok(result) => result,
                 Err(e) => {
                     error!("Task execution error: {}", e);
-                    (String::new(), format!("Execution error: {}", e), false)
+                    (String::new(), format!("Execution error: {}", e), "failed")
                 }
             };
 
@@ -237,21 +236,13 @@ impl Scheduler {
                 error!("Failed to update task run info: {}", e);
             }
 
-            let status = if success { "success" } else { "failed" };
-            if let Err(e) = log_service.create(task.id, output, status.to_string(), Some(duration), start_time).await {
+            let status_str = status;
+            if let Err(e) = log_service.create(task.id, output, status_str.to_string(), Some(duration), start_time).await {
                 error!("Failed to save log: {}", e);
             }
         });
 
         Ok(())
-    }
-
-    /// 流式执行任务，返回 execution_id 和 stream
-    pub async fn execute_task_stream(
-        &self,
-        task: &crate::models::Task,
-    ) -> anyhow::Result<(String, impl tokio_stream::Stream<Item = anyhow::Result<String>>)> {
-        self.executor.execute_stream(task).await
     }
 
     /// 中止正在执行的任务

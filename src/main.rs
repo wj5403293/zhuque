@@ -256,9 +256,8 @@ async fn main() -> Result<()> {
                             let start_time = chrono::Utc::now();
 
                             match executor_clone.execute(&task).await {
-                                Ok((_execution_id, output, success)) => {
+                                Ok((_execution_id, output, status)) => {
                                     let duration = (chrono::Utc::now() - start_time).num_milliseconds();
-                                    let status = if success { "success" } else { "failed" };
                                     info!("Startup task {} completed with status: {}", task.name, status);
 
                                     // 更新任务执行信息

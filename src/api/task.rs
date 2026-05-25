@@ -145,42 +145,6 @@ pub async fn run_task(
 
     Ok(StatusCode::ACCEPTED)
 }
-
-/// 执行任务并流式返回日志（SSE）
-pub async fn run_task_stream(
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<i64>,
-) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, StatusCode> {
-    let task = state
-        .task_service
-        .get(id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::NOT_FOUND)?;
-
-    let (execution_id, stream) = state
-        .scheduler
-        .execute_task_stream(&task)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    let sse_stream = async_stream::stream! {
-        // 先发送 execution_id
-        yield Ok(Event::default().event("execution_id").data(execution_id));
-
-        let mut s = Box::pin(stream);
-        while let Some(result) = s.next().await {
-            match result {
-                Ok(line) => yield Ok(Event::default().data(line)),
-                Err(e) => yield Ok(Event::default().data(format!("[ERROR] {}", e))),
-            }
-        }
-    };
-
-    Ok(Sse::new(sse_stream).keep_alive(KeepAlive::default()))
-}
-
-/// 中止正在执行的任务
 pub async fn kill_task(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i64>,

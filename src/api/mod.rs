@@ -143,7 +143,6 @@ pub fn create_router(state: Arc<AppState>) -> Router {
                 .delete(task::delete_task),
         )
         .route("/api/tasks/:id/run", post(task::run_task))
-        .route("/api/tasks/:id/run-stream", get(task::run_task_stream))
         .route("/api/tasks/:id/kill", delete(task::kill_task))
         // 执行管理
         .route("/api/executions", get(task::list_executions))

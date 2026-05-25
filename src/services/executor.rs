@@ -7,11 +7,13 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::{broadcast, RwLock};
 use tracing::{debug, error, info};
 use uuid::Uuid;
+use libc;
 
 /// 辅助结构体：处理 \r 和 \n 作为行分隔符的读取器
 struct LineReader<R> {
@@ -612,6 +614,7 @@ export default sendNotify;
             .envs(env_vars.clone())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            .process_group(0)
             .spawn()?;
 
         // 注册进程
@@ -634,6 +637,22 @@ export default sendNotify;
         if let Some(info) = self.executions.write().await.get_mut(&execution_id) {
             info.pid = Some(pid);
         }
+
+        // 超时看门狗：task.timeout > 0 时，在后台计时，超时后杀掉进程
+        // execute 方法 - 超时看门狗（用 libc::kill 替代 shell kill 命令）
+        let timed_out = Arc::new(AtomicBool::new(false));
+        let timeout_handle = if task.timeout > 0 {
+            let timeout_secs = task.timeout as u64;
+            let pid_to_kill = pid;
+            let timed_out_flag = timed_out.clone();
+            Some(tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_secs(timeout_secs)).await;
+                timed_out_flag.store(true, Ordering::SeqCst);
+                unsafe { libc::kill(-(pid_to_kill as i32), libc::SIGKILL) };
+            }))
+        } else {
+            None
+        };
 
         let stdout = child.stdout.take().unwrap();
         let stderr = child.stderr.take().unwrap();
@@ -688,27 +707,45 @@ export default sendNotify;
         let status = child.wait().await?;
         let success = status.success();
 
-        // 发送退出消息
-        let exit_msg = if success {
-            "[MAIN] Process exited with code 0".to_string()
-        } else {
-            format!("[MAIN] Process exited with code {}", status.code().unwrap_or(-1))
-        };
-        let _ = tx.send(exit_msg.clone());
-        // 缓存退出消息
-        if let Some(buffer) = log_buffers.write().await.get_mut(&exec_id_clone) {
-            buffer.push(exit_msg.clone());
+        // 取消超时看门狗（进程已正常结束）
+        if let Some(handle) = timeout_handle {
+            handle.abort();
         }
-        output.push_str(&exit_msg);
-        output.push('\n');
+
+        // 检查是否因超时被杀
+        if timed_out.load(Ordering::SeqCst) {
+            overall_success = false;
+            let timeout_msg = format!(
+                "[TIMEOUT] Task exceeded {}s timeout limit and was killed",
+                task.timeout
+            );
+            let _ = tx.send(timeout_msg.clone());
+            if let Some(buffer) = log_buffers.write().await.get_mut(&exec_id_clone) {
+                buffer.push(timeout_msg.clone());
+            }
+            output.push_str(&timeout_msg);
+            output.push('\n');
+        } else {
+            // 发送退出消息
+            let exit_msg = if success {
+                "[MAIN] Process exited with code 0".to_string()
+            } else {
+                format!("[MAIN] Process exited with code {}", status.code().unwrap_or(-1))
+            };
+            let _ = tx.send(exit_msg.clone());
+            if let Some(buffer) = log_buffers.write().await.get_mut(&exec_id_clone) {
+                buffer.push(exit_msg.clone());
+            }
+            output.push_str(&exit_msg);
+            output.push('\n');
+        }
 
         // 清理进程记录
         let task_id = task.id;
         self.running_tasks.write().await.remove(&task_id);
 
-        if !success {
+        if !success && !timed_out.load(Ordering::SeqCst) {
             overall_success = false;
-            // 不要在这里 return，继续执行后置命令
         }
 
         // 执行后置命令（无论主命令成功与否都执行，用于清理工作）
@@ -861,6 +898,7 @@ export default sendNotify;
             .envs(env_vars)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            .process_group(0)
             .spawn()?;
 
         // 注册进程
@@ -884,6 +922,17 @@ export default sendNotify;
             info.pid = Some(pid);
         }
 
+        // 超时看门狗：task.timeout > 0 时，在后台计时，超时后杀掉进程
+        // execute_stream 方法 - 计算超时截止时间（在 stream 外部）
+        let task_timeout = task.timeout;
+        let timed_out_stream = Arc::new(AtomicBool::new(false));
+        let timeout_deadline = if task_timeout > 0 {
+            Some(tokio::time::Instant::now() + std::time::Duration::from_secs(task_timeout as u64))
+        } else {
+            None
+        };
+        let pid_for_stream = pid;
+
         let stdout = child.stdout.take().ok_or_else(|| anyhow!("Failed to capture stdout"))?;
         let stderr = child.stderr.take().ok_or_else(|| anyhow!("Failed to capture stderr"))?;
 
@@ -899,7 +948,7 @@ export default sendNotify;
             let mut stdout_reader = LineReader::new(stdout);
             let mut stderr_reader = LineReader::new(stderr);
 
-            loop {
+            'read_loop: loop {
                 tokio::select! {
                     result = stdout_reader.next_line() => {
                         match result {
@@ -907,11 +956,12 @@ export default sendNotify;
                                 let _ = tx.send(line.clone());
                                 yield Ok(line);
                             },
-                            Ok(None) => break,
+                            Ok(None) => break 'read_loop,
                             Err(e) => {
                                 let err_msg = format!("Stdout error: {}", e);
                                 let _ = tx.send(err_msg.clone());
                                 yield Err(anyhow!(err_msg));
+                                break 'read_loop;
                             },
                         }
                     }
@@ -929,13 +979,27 @@ export default sendNotify;
                             },
                         }
                     }
+                    _ = async {
+                        if let Some(deadline) = timeout_deadline {
+                            tokio::time::sleep_until(deadline).await;
+                        } else {
+                            std::future::pending::<()>().await;
+                        }
+                    } => {
+                        // 超时：直接杀进程组，然后退出读取循环
+                        timed_out_stream.store(true, Ordering::SeqCst);
+                        unsafe { libc::kill(-(pid_for_stream as i32), libc::SIGKILL) };
+                        break 'read_loop;
+                    }
                 }
             }
 
             // 等待进程结束
             match child.wait().await {
                 Ok(status) => {
-                    let exit_msg = if status.success() {
+                    let exit_msg = if timed_out_stream.load(Ordering::SeqCst) {
+                        format!("[TIMEOUT] Task exceeded {}s timeout limit and was killed", task_timeout)
+                    } else if status.success() {
                         "[EXIT] Process exited with code 0".to_string()
                     } else {
                         format!("[EXIT] Process exited with code {}", status.code().unwrap_or(-1))
@@ -987,16 +1051,11 @@ export default sendNotify;
         let mut tasks = self.running_tasks.write().await;
 
         if let Some(pid) = tasks.remove(&task_id) {
-            let output = Command::new("kill")
-                .arg("-9")
-                .arg(pid.to_string())
-                .output()
-                .await?;
-
-            if output.status.success() {
+            let ret = unsafe { libc::kill(-(pid as i32), libc::SIGKILL) };
+            if ret == 0 {
                 Ok(())
             } else {
-                Err(anyhow!("Failed to kill process {}", pid))
+                Err(anyhow!("Failed to kill process group {}: errno={}", pid, std::io::Error::last_os_error()))
             }
         } else {
             Err(anyhow!("Task not running"))
@@ -1020,63 +1079,55 @@ export default sendNotify;
         };
 
         if let Some(pid) = pid {
-            // 释放锁后再执行 kill 命令，避免阻塞
-            // 使用 spawn 而不是 output，不等待命令完成
-            let kill_result = Command::new("kill")
-                .arg("-9")
-                .arg(pid.to_string())
-                .spawn();
+            let ret = unsafe { libc::kill(-(pid as i32), libc::SIGKILL) };
+            let kill_ok = ret == 0;
 
-            match kill_result {
-                Ok(_) => {
-                    // kill 命令已发送，记录终止日志
-                    if let Some(info) = exec_info {
-                        let duration = (chrono::Utc::now() - info.started_at).num_milliseconds();
+            if kill_ok {
+                // kill 信号已发送，记录终止日志
+                if let Some(info) = exec_info {
+                    let duration = (chrono::Utc::now() - info.started_at).num_milliseconds();
 
-                        // 获取已执行的输出
-                        let existing_output = {
-                            let buffers = self.log_buffers.read().await;
-                            buffers.get(&info.execution_id)
-                                .map(|lines| lines.join("\n"))
-                                .unwrap_or_default()
-                        };
+                    // 获取已执行的输出
+                    let existing_output = {
+                        let buffers = self.log_buffers.read().await;
+                        buffers.get(&info.execution_id)
+                            .map(|lines| lines.join("\n"))
+                            .unwrap_or_default()
+                    };
 
-                        // 组合完整的日志输出
-                        let mut log_output = String::new();
-                        if !existing_output.is_empty() {
-                            log_output.push_str(&existing_output);
-                            log_output.push('\n');
-                        }
-                        log_output.push_str(&format!("[KILLED] Task '{}' was manually terminated (PID: {})", info.task_name, pid));
-
-                        // 清理执行信息
-                        self.executions.write().await.remove(&info.execution_id);
-                        self.log_channels.write().await.remove(&info.execution_id);
-                        self.log_buffers.write().await.remove(&info.execution_id);
-
-                        // 通知运行状态变化
-                        let running_list: Vec<i64> = self.running_tasks.read().await.keys().copied().collect();
-                        let update = RunningTasksUpdate {
-                            running_ids: running_list,
-                            changed_task_id: task_id,
-                            change_type: "finished".to_string(),
-                            task_data: None,
-                            last_run_at: Some(info.started_at),
-                            last_run_duration: Some(duration),
-                        };
-                        let _ = self.running_tasks_notifier.send(update);
-
-                        // 保存日志到数据库
-                        if let Err(e) = log_service.create(task_id, log_output, "killed".to_string(), Some(duration), info.started_at).await {
-                            error!("Failed to save kill log: {}", e);
-                        }
+                    // 组合完整的日志输出
+                    let mut log_output = String::new();
+                    if !existing_output.is_empty() {
+                        log_output.push_str(&existing_output);
+                        log_output.push('\n');
                     }
-                    Ok(())
+                    log_output.push_str(&format!("[KILLED] Task '{}' was manually terminated (PID: {})", info.task_name, pid));
+
+                    // 清理执行信息
+                    self.executions.write().await.remove(&info.execution_id);
+                    self.log_channels.write().await.remove(&info.execution_id);
+                    self.log_buffers.write().await.remove(&info.execution_id);
+
+                    // 通知运行状态变化
+                    let running_list: Vec<i64> = self.running_tasks.read().await.keys().copied().collect();
+                    let update = RunningTasksUpdate {
+                        running_ids: running_list,
+                        changed_task_id: task_id,
+                        change_type: "finished".to_string(),
+                        task_data: None,
+                        last_run_at: Some(info.started_at),
+                        last_run_duration: Some(duration),
+                    };
+                    let _ = self.running_tasks_notifier.send(update);
+
+                    // 保存日志到数据库
+                    if let Err(e) = log_service.create(task_id, log_output, "killed".to_string(), Some(duration), info.started_at).await {
+                        error!("Failed to save kill log: {}", e);
+                    }
                 }
-                Err(e) => {
-                    error!("Failed to spawn kill command for PID {}: {}", pid, e);
-                    Err(anyhow!("Failed to kill process {}: {}", pid, e))
-                }
+                Ok(())
+            } else {
+                Err(anyhow!("Failed to kill process group {}: errno={}", pid, std::io::Error::last_os_error()))
             }
         } else {
             Err(anyhow!("Task not running"))

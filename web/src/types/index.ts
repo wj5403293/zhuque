@@ -11,6 +11,7 @@ export interface Task {
   post_command?: string;
   group_id?: number;
   working_dir?: string;
+  timeout?: number; // 执行超时（秒），0 表示不超时
   notification?: string | null; // JSON 序列化的 TaskNotificationConfig
   last_run_at?: string;
   last_run_duration?: number;

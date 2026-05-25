@@ -72,8 +72,8 @@ impl TaskService {
 
         let now = Utc::now();
         let result = sqlx::query(
-            "INSERT INTO tasks (name, command, cron, type, enabled, env, pre_command, post_command, group_id, working_dir, notification, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO tasks (name, command, cron, type, enabled, env, pre_command, post_command, group_id, working_dir, notification, timeout, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&create.name)
         .bind(&create.command)
@@ -86,6 +86,7 @@ impl TaskService {
         .bind(create.group_id)
         .bind(&create.working_dir)
         .bind(&create.notification)
+        .bind(create.timeout)
         .bind(now)
         .bind(now)
         .execute(&*pool)
@@ -149,6 +150,10 @@ impl TaskService {
             query.push_str(", notification = ?");
             params.push(notification.clone());
         }
+        if let Some(timeout) = update.timeout {
+            query.push_str(", timeout = ?");
+            params.push(timeout.to_string());
+        }
 
         query.push_str(" WHERE id = ?");
         params.push(id.to_string());
@@ -191,6 +196,9 @@ impl TaskService {
         }
         if let Some(notification) = &update.notification {
             q = q.bind(notification);
+        }
+        if let Some(timeout) = update.timeout {
+            q = q.bind(timeout);
         }
 
         q = q.bind(id);

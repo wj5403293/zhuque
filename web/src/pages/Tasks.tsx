@@ -7,6 +7,7 @@ import {
   Modal,
   Form,
   Input,
+  InputNumber,
   Switch,
   Message,
   Popconfirm,
@@ -337,6 +338,7 @@ const Tasks: React.FC = () => {
       type: 'cron',
       enabled: true,
       cron: ['*/5 * * * *'],
+      timeout: 0,
     });
     setTaskEnvFormat('json');
     resetNotifState(null);
@@ -957,6 +959,20 @@ const Tasks: React.FC = () => {
                 <Input
                   placeholder="例如: git/my-repo 或 /absolute/path"
                   style={{ fontFamily: 'monospace' }}
+                />
+              </FormItem>
+
+              <FormItem
+                label="执行超时"
+                field="timeout"
+                extra="任务执行的最长时间（秒）。超时后将强制终止任务。设为 0 表示不限制超时"
+              >
+                <InputNumber
+                  min={0}
+                  precision={0}
+                  placeholder="0"
+                  suffix="秒"
+                  style={{ width: 200 }}
                 />
               </FormItem>
 

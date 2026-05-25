@@ -472,6 +472,15 @@ const Notifications: React.FC = () => {
     <Spin loading={loading} style={{ width: '100%' }}>
       <div style={{ maxWidth: 820, margin: '0 auto', padding: isMobile ? '0 8px 32px' : '0 16px 32px' }}>
 
+        {/* ── 页面标题 + 保存按钮 ── */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <Typography.Title heading={5} style={{ margin: 0 }}>通知管理</Typography.Title>
+          <Button type="primary" icon={<IconSave />} loading={saving}
+            onClick={handleSave} size="small">
+            保存配置
+          </Button>
+        </div>
+
         {/* ── 全局开关 ── */}
         <Card title="通知设置" style={{ marginBottom: 16 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -581,14 +590,6 @@ const Notifications: React.FC = () => {
             {`const { sendNotify } = require('./sendNotify')\nsendNotify('签到结果', '账号A: +50豆')`}
           </pre>
         </Card>
-
-        {/* ── 保存按钮 ── */}
-        <div style={{ textAlign: 'right' }}>
-          <Button type="primary" icon={<IconSave />} loading={saving}
-            onClick={handleSave} size="large" long={isMobile}>
-            保存配置
-          </Button>
-        </div>
 
       </div>
 

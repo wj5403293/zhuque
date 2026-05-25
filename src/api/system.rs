@@ -44,8 +44,10 @@ pub async fn get_system_info(
 
     let cpu_usage = sys.global_cpu_info().cpu_usage();
     let memory_total = sys.total_memory();
-    let memory_used = sys.used_memory();
     let memory_available = sys.available_memory();
+    // 使用 total - available 计算已用内存，与 `free -h` 的 available 列一致
+    // sysinfo 的 used_memory() 在 Docker 容器内会因 MemFree≈0 而虚报为 100%
+    let memory_used = memory_total.saturating_sub(memory_available);
     let memory_usage_percent = if memory_total > 0 {
         (memory_used as f32 / memory_total as f32) * 100.0
     } else {
